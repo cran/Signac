@@ -9,10 +9,13 @@ CoveragePlot(
   region,
   features = NULL,
   assay = NULL,
+  show.bulk = FALSE,
   expression.assay = "RNA",
   expression.slot = "data",
   annotation = TRUE,
   peaks = TRUE,
+  ranges = NULL,
+  ranges.title = "Ranges",
   links = TRUE,
   tile = FALSE,
   tile.size = 100,
@@ -45,6 +48,10 @@ alongside accessibility tracks (for example, gene names).}
 
 \item{assay}{Name of the assay to plot}
 
+\item{show.bulk}{Include coverage track for all cells combined (pseudo-bulk).
+Note that this will plot the combined accessibility for all cells included in
+the plot (rather than all cells in the object).}
+
 \item{expression.assay}{Name of the assay containing expression data to plot
 alongside accessibility tracks. Only needed if supplying \code{features}
 argument.}
@@ -55,6 +62,11 @@ if supplying the \code{features} argument.}
 \item{annotation}{Display gene annotations}
 
 \item{peaks}{Display peaks}
+
+\item{ranges}{Additional genomic ranges to plot}
+
+\item{ranges.title}{Y-axis title for ranges track. Only relevant if
+\code{ranges} parameter is set.}
 
 \item{links}{Display links}
 
@@ -113,8 +125,7 @@ Plot frequency of Tn5 insertion events for different groups of cells within
 given regions of the genome.
 }
 \details{
-Thanks to Andrew Hill for providing an early version of this function
-\url{http://andrewjohnhill.com/blog/2019/04/12/streamlining-scatac-seq-visualization-and-analysis/}
+Thanks to Andrew Hill for providing an early version of this function.
 }
 \examples{
 \donttest{

@@ -194,147 +194,6 @@ DownsampleFeatures <- function(
   return(object)
 }
 
-#' Feature Matrix
-#'
-#' Construct a feature x cell matrix from a genomic fragments file
-#'
-#' @param fragments A list of \code{\link{Fragment}} objects.
-#' @param features A GRanges object containing a set of genomic intervals.
-#' These will form the rows of the matrix, with each entry recording the number
-#' of unique reads falling in the genomic region for each cell.
-#' @param cells Vector of cells to include. If NULL, include all cells found
-#' in the fragments file
-#' @param process_n Number of regions to load into memory at a time, per thread.
-#' Processing more regions at once can be faster but uses more memory.
-#' @param sep Vector of separators to use for genomic string. First element is
-#' used to separate chromosome and coordinates, second separator is used to
-#' separate start and end coordinates.
-#' @param verbose Display messages
-#'
-#' @export
-#' @concept preprocessing
-#' @concept utilities
-#' @return Returns a sparse matrix
-#' @examples
-#' fpath <- system.file("extdata", "fragments.tsv.gz", package="Signac")
-#' fragments <- CreateFragmentObject(fpath)
-#' FeatureMatrix(
-#'   fragments = fragments,
-#'   features = granges(atac_small)
-#' )
-FeatureMatrix <- function(
-  fragments,
-  features,
-  cells = NULL,
-  process_n = 2000,
-  sep = c("-", "-"),
-  verbose = TRUE
-) {
-  if (!inherits(x = fragments, what = "list")) {
-    if (inherits(x = fragments, what = "Fragment")) {
-      fragments <- list(fragments)
-    } else {
-      stop("fragments should be a list of Fragment objects")
-    }
-  }
-  # if cells is not NULL, iterate over all fragment objects
-  # and find which objects contain cells that are requested
-  if (!is.null(x = cells)) {
-    obj.use <- c()
-    for (i in seq_along(along.with = fragments)) {
-      if (any(cells %in% Cells(x = fragments[[i]]))) {
-        obj.use <- c(obj.use, i)
-      }
-    }
-  } else {
-    obj.use <- seq_along(along.with = fragments)
-  }
-  # create a matrix from each fragment file
-  mat.list <- sapply(
-    X = obj.use,
-    FUN = function(x) {
-      SingleFeatureMatrix(
-        fragment = fragments[[x]],
-        features = features,
-        cells = cells,
-        sep = sep,
-        verbose = verbose,
-        process_n = process_n
-      )
-    })
-  # cbind all the matrices
-  featmat <- do.call(what = cbind, args = mat.list)
-  return(featmat)
-}
-
-# Run FeatureMatrix on a single Fragment object
-# @inheritParams FeatureMatrix
-#' @importFrom GenomeInfoDb keepSeqlevels
-#' @importFrom future.apply future_lapply
-#' @importFrom future nbrOfWorkers
-#' @importFrom pbapply pblapply
-#' @importFrom Matrix sparseMatrix
-#' @importMethodsFrom GenomicRanges intersect
-#' @importFrom Rsamtools TabixFile seqnamesTabix
-SingleFeatureMatrix <- function(
-  fragment,
-  features,
-  cells = NULL,
-  process_n = 2000,
-  sep = c("-", "-"),
-  verbose = TRUE
-) {
-  fragment.path <- GetFragmentData(object = fragment, slot = "path")
-  if (!is.null(cells)) {
-    # only look for cells that are in the fragment file
-    cells <- intersect(x = cells, y = Cells(x = fragment))
-  }
-  tbx <- TabixFile(file = fragment.path)
-  features <- keepSeqlevels(
-    x = features,
-    value = intersect(
-      x = seqnames(x = features),
-      y = seqnamesTabix(file = tbx)
-    ),
-    pruning.mode = "coarse"
-  )
-
-  feature.list <- ChunkGRanges(
-    granges = features,
-    nchunk = ceiling(x = length(x = features) / process_n)
-  )
-  if (verbose) {
-    message("Extracting reads overlapping genomic regions")
-  }
-  if (nbrOfWorkers() > 1) {
-    mylapply <- future_lapply
-  } else {
-    mylapply <- ifelse(test = verbose, yes = pblapply, no = lapply)
-  }
-  matrix.parts <- mylapply(
-    X = feature.list,
-    FUN = PartialMatrix,
-    tabix = tbx,
-    cells = cells,
-    sep = sep
-  )
-  # remove any that are NULL (no fragments for any cells in the region)
-  null.parts <- sapply(X = matrix.parts, FUN = is.null)
-  matrix.parts <- matrix.parts[!null.parts]
-  if (is.null(x = cells)) {
-    all.cells <- unique(
-      x = unlist(x = lapply(X = matrix.parts, FUN = colnames))
-    )
-    matrix.parts <- lapply(
-      X = matrix.parts,
-      FUN = AddMissingCells,
-      cells = all.cells
-    )
-  }
-  featmat <- Reduce(f = rbind, x = matrix.parts)
-  return(featmat)
-}
-
 #' @param assay Name of assay to use
 #' @param min.cutoff Cutoff for feature to be included in the VariableFeatures
 #' for the object. This can be a percentile specified as 'q' followed by the
@@ -472,68 +331,6 @@ FRiP <- function(
   frip <- peak.counts / total_fragments_cell
   object <- AddMetaData(object = object, metadata = frip, col.name = col.name)
   return(object)
-}
-
-#' Genome bin matrix
-#'
-#' Construct a bin x cell matrix from a fragments file.
-#'
-#' This function bins the genome and calls \code{\link{FeatureMatrix}} to
-#' construct a bin x cell matrix.
-#'
-#' @param fragments Path to tabix-indexed fragments file
-#' @param genome A vector of chromosome sizes for the genome. This is used to
-#' construct the genome bin coordinates. The can be obtained by calling
-#' \code{\link[GenomeInfoDb]{seqlengths}} on a
-#' \code{\link[BSgenome]{BSgenome-class}} object.
-#' @param cells Vector of cells to include. If NULL, include all cells found
-#' in the fragments file
-#' @param binsize Size of the genome bins to use
-#' @param process_n Number of regions to load into memory at a time, per thread.
-#' Processing more regions at once can be faster but uses more memory.
-#' @param sep Vector of separators to use for genomic string. First element is
-#' used to separate chromosome and coordinates, second separator is used to
-#' separate start and end coordinates.
-#' @param verbose Display messages
-#'
-#' @importFrom GenomicRanges tileGenome
-#' @export
-#' @concept preprocessing
-#' @concept utilities
-#' @return Returns a sparse matrix
-#' @examples
-#' genome <- 780007
-#' names(genome) <- 'chr1'
-#' fpath <- system.file("extdata", "fragments.tsv.gz", package="Signac")
-#' fragments <- CreateFragmentObject(fpath)
-#' GenomeBinMatrix(
-#'   fragments = fragments,
-#'   genome = genome,
-#'   binsize = 1000
-#' )
-GenomeBinMatrix <- function(
-  fragments,
-  genome,
-  cells = NULL,
-  binsize = 5000,
-  process_n = 2000,
-  sep = c("-", "-"),
-  verbose = TRUE
-) {
-  tiles <- tileGenome(
-    seqlengths = genome,
-    tilewidth = binsize,
-    cut.last.tile.in.chrom = TRUE
-  )
-  binmat <- FeatureMatrix(
-    fragments = fragments,
-    features = tiles,
-    cells = cells,
-    process_n = process_n,
-    sep = sep,
-    verbose = verbose
-  )
-  return(binmat)
 }
 
 globalVariables(names = "cell", package = "Signac")
@@ -681,6 +478,7 @@ RegionStats.ChromatinAssay <- function(
   )
   rownames(x = feature.metadata) <- rownames(x = object)
   meta.data <- GetAssayData(object = object, slot = "meta.features")
+  feature.metadata <- feature.metadata[rownames(x = meta.data), ]
   meta.data <- cbind(meta.data, feature.metadata)
   slot(object = object, name = "meta.features") <- meta.data
   return(object)
@@ -727,7 +525,7 @@ RegionStats.Seurat <- function(
 #'  \item{2}: The TF-IDF implementation used by Cusanovich & Hill
 #'  et al. 2018 (\url{https://doi.org/10.1016/j.cell.2018.06.052}). This
 #'  computes \eqn{TF \times (\log(IDF))}.
-#'  \item{3}: The log-TF method used by Andrew Hill (\url{http://andrewjohnhill.com/blog/2019/05/06/dimensionality-reduction-for-scatac-data/}).
+#'  \item{3}: The log-TF method used by Andrew Hill.
 #'  This computes \eqn{\log(TF) \times \log(IDF)}.
 #'  \item{4}: The 10x Genomics method (no TF normalization). This computes
 #'  \eqn{IDF}.
@@ -790,9 +588,9 @@ RunTFIDF.default <- function(
   colnames(x = norm.data) <- colnames(x = object)
   rownames(x = norm.data) <- rownames(x = object)
   # set NA values to 0
-  vals <- slot(object = object, name = "x")
+  vals <- slot(object = norm.data, name = "x")
   vals[is.na(x = vals)] <- 0
-  slot(object = object, name = "x") <- vals
+  slot(object = norm.data, name = "x") <- vals
   return(norm.data)
 }
 
@@ -1098,7 +896,12 @@ TSSFast <- function(
     # open fragment file
     tbx.path <- GetFragmentData(object = frags[[i]], slot = "path")
     cellmap <- GetFragmentData(object = frags[[i]], slot = "cells")
-    cellmap <- cellmap[intersect(names(x = cellmap), colnames(x = object))]
+    if (is.null(x = cellmap)) {
+      cellmap <- colnames(x = object)
+      names(x = cellmap) <- cellmap
+    } else {
+      cellmap <- cellmap[intersect(names(x = cellmap), colnames(x = object))]
+    }
     tbx <- TabixFile(file = tbx.path)
     open(con = tbx)
     # iterate over chunked ranges

@@ -1,4 +1,5 @@
 #' @include generics.R
+#' @importFrom Rcpp evalCpp
 #' @importFrom methods setClass setClassUnion setMethod is slot slot<- new as
 #' slotNames
 #' @importClassesFrom Matrix dgCMatrix
@@ -86,7 +87,9 @@ Motif <- setClass(
 #' enrichment scores for Tn5 integration (for example, enrichment at the TSS)
 #' @slot links A \code{\link[GenomicRanges]{GRanges}} object describing linked
 #' genomic positions, such as co-accessible sites or enhancer-gene regulatory
-#' relationships.
+#' relationships. This should be a \code{GRanges} object, where the start and
+#' end coordinates are the two linked genomic positions, and must contain a
+#' "score" metadata column.
 #'
 #' @name ChromatinAssay-class
 #' @rdname ChromatinAssay-class
@@ -159,7 +162,7 @@ ChromatinAssay <- setClass(
 #' @param ... Additional arguments passed to \code{\link{CreateFragmentObject}}
 #'
 #' @importFrom Seurat CreateAssayObject
-#' @importFrom Matrix rowSums
+#' @importFrom Matrix rowSums colSums
 #' @importFrom GenomicRanges isDisjoint
 #' @concept assay
 #'
@@ -205,7 +208,11 @@ CreateChromatinAssay <- function(
   if (!is.null(x = annotation) & !inherits(x = annotation, what = "GRanges")) {
     stop("Annotation must be a GRanges object.")
   }
-  ncell.feature <- rowSums(data.use > 0)
+  # remove low-count cells
+  ncount.cell <- colSums(x = data.use > 0)
+  data.use <- data.use[, ncount.cell > min.features]
+
+  ncell.feature <- rowSums(x = data.use > 0)
   if (!is.null(x = max.cells)) {
     if (is(object = max.cells, class2 = "character")) {
       percent.cutoff <- as.numeric(
@@ -216,23 +223,27 @@ CreateChromatinAssay <- function(
   } else {
     max.cells <- ncol(x = data.use)
   }
-  features.keep <- (ncell.feature > min.cells) & (ncell.feature < max.cells)
+  features.keep <- (ncell.feature >= min.cells) & (ncell.feature <= max.cells)
+  data.use <- data.use[features.keep, ]
+  ranges <- ranges[features.keep, ]
   # re-assign row names of matrix so that it's a known granges transformation
   new.rownames <- GRangesToString(grange = ranges, sep = c("-", "-"))
+  rownames(x = data.use) <- new.rownames
   if (!missing(x = counts)) {
-    rownames(x = counts) <- new.rownames
-    counts <- counts[features.keep, ]
+    seurat.assay <- CreateAssayObject(
+      counts = data.use,
+      data = data,
+      min.cells = min.cells,
+      min.features = min.features
+    )
   } else {
-    rownames(x = data) <- new.rownames
-    data <- data[features.keep, ]
+    seurat.assay <- CreateAssayObject(
+      counts = counts,
+      data = data.use,
+      min.cells = min.cells,
+      min.features = min.features
+    )
   }
-  ranges <- ranges[features.keep, ]
-  seurat.assay <- CreateAssayObject(
-    counts = counts,
-    data = data,
-    min.cells = min.cells,
-    min.features = min.features
-  )
   if (inherits(x = fragments, what = "list")) {
     # check each object in the list is a fragment object
     # fragment list usually supplied when doing object merge,
@@ -617,13 +628,21 @@ SetAssayData.ChromatinAssay <- function(object, slot, new.data, ...) {
     if (!(is(object = new.data, class2 = "AnyMatrix"))) {
       stop("Data must be a matrix or sparseMatrix")
     }
-    if (nrow(x = object) != nrow(x = new.data)) {
-      stop("Number of rows in provided matrix does not match
-           the number of rows in the object")
-    }
     if (ncol(x = object) != ncol(x = new.data)) {
       stop("Number of columns in the provided matrix does not match
            the number of cells in the object")
+    }
+    if (slot %in% c("counts", "data")) {
+      if (nrow(x = object) != nrow(x = new.data)) {
+        stop("Number of rows in provided matrix does not match
+           the number of rows in the object")
+      }
+    } else {
+      # scale data
+      if (nrow(x = object) < nrow(x = new.data)) {
+        stop("Number of rows in provided matrix is greater than
+             the number of rows in the object")
+      }
     }
     slot(object = object, name = slot) <- new.data
   } else if (slot == "seqinfo") {
@@ -882,22 +901,13 @@ subset.ChromatinAssay <- function(
   standardassay <- as(object = x, Class = "Assay")
   standardassay <- subset(x = standardassay, features = features, cells = cells)
 
-  # TODO if cells or features change, need to wipe the data slot
-
   # subset genomic ranges
   ranges.keep <- granges(x = x)
   if (!is.null(x = features)) {
-    idx.keep <- which(rownames(x = x) == features)
+    idx.keep <- rownames(x = x) %in% features
     ranges.keep <- ranges.keep[idx.keep]
   }
 
-  # need to subsect matrix first, otherwise will give errors
-  # when dimension doesn't match the matrix dimension
-  x <- SetAssayData(
-    object = x,
-    slot = "ranges",
-    new.data = ranges.keep
-  )
   # subset motifs
   motifs <- Motifs(object = x)
   if (!is.null(x = motifs)) {
@@ -1113,7 +1123,7 @@ merge.ChromatinAssay <- function(
 
     # create new ChromatinAssay object
     # bias, motifs, positionEnrichment, metafeatures not kept
-    # data and scaledata only kept if features exactly identical
+    # scaledata only kept if features exactly identical
     if (nrow(x = merged.counts) > 0) {
       new.assay <- CreateChromatinAssay(
         counts = merged.counts,
@@ -1176,38 +1186,64 @@ merge.ChromatinAssay <- function(
     merged.counts <- MergeOverlappingRows(
       mergeinfo = tomerge,
       assay.list = assays,
+      slot = "counts",
       verbose = TRUE
     )
 
-    # merge matrices
-    # RowMergeSparseMatrices only exported in Seurat release Dec-2019 (3.1.2)
-    merged.all <- merged.counts[[1]]
-    for (i in 2:length(x = merged.counts)) {
-      merged.all <- RowMergeSparseMatrices(
-        mat1 = merged.all,
-        mat2 = merged.counts[[i]]
+    merged.data <- MergeOverlappingRows(
+      mergeinfo = tomerge,
+      assay.list = assays,
+      slot = "data",
+      verbose = TRUE
+    )
+
+    if (nrow(x = merged.counts[[1]]) > 0) {
+      merged.counts <- MergeMatrixParts(
+        mat.list = merged.counts,
+        new.rownames = new.rownames
+      )
+      merged.data <- MergeMatrixParts(
+        mat.list = merged.data,
+        new.rownames = new.rownames
+      )
+      new.assay <- CreateChromatinAssay(
+        counts = merged.counts,
+        min.cells = -1,
+        min.features = -1,
+        max.cells = NULL,
+        ranges = reduced.ranges,
+        motifs = NULL,
+        fragments = all.frag,
+        genome = seqinfo.use,
+        annotation = annot.use,
+        bias = NULL,
+        validate.fragments = FALSE
+      )
+      new.assay <- SetAssayData(
+        object = new.assay, slot = "data", new.data = merged.data
+      )
+    } else {
+      merged.data <- MergeMatrixParts(
+        mat.list = merged.data,
+        new.rownames = new.rownames
+      )
+      # create new ChromatinAssay object
+      # bias, motifs, positionEnrichment, metafeatures not kept
+      # need to keep data otherwise integration doesn't work
+      new.assay <- CreateChromatinAssay(
+        data = merged.data,
+        min.cells = 0,
+        min.features = 0,
+        max.cells = NULL,
+        ranges = reduced.ranges,
+        motifs = NULL,
+        fragments = all.frag,
+        genome = seqinfo.use,
+        annotation = annot.use,
+        bias = NULL,
+        validate.fragments = FALSE
       )
     }
-
-    # reorder rows to match genomic ranges
-    merged.all <- merged.all[new.rownames, ]
-
-    # create new ChromatinAssay object
-    # bias, motifs, positionEnrichment, metafeatures not kept
-    # data and scaledata only kept if features exactly identical
-    new.assay <- CreateChromatinAssay(
-      counts = merged.all,
-      min.cells = 0,
-      min.features = 0,
-      max.cells = NULL,
-      ranges = reduced.ranges,
-      motifs = NULL,
-      fragments = all.frag,
-      genome = seqinfo.use,
-      annotation = annot.use,
-      bias = NULL,
-      validate.fragments = FALSE
-    )
   }
   return(new.assay)
 }
@@ -1332,7 +1368,9 @@ setMethod(
 #' @export
 #' @concept assay
 #' @examples
+#' \donttest{
 #' Annotation(atac_small[["peaks"]])
+#' }
 Annotation.ChromatinAssay <- function(object, ...) {
   return(slot(object = object, name = "annotation"))
 }
@@ -1344,7 +1382,9 @@ Annotation.ChromatinAssay <- function(object, ...) {
 #' @export
 #' @concept assay
 #' @examples
+#' \donttest{
 #' Annotation(atac_small)
+#' }
 Annotation.Seurat <- function(object, ...) {
   assay <- DefaultAssay(object = object)
   return(Annotation(object = object[[assay]]))
@@ -1523,6 +1563,7 @@ dim.Motif <- function(x) {
 #' @export
 #' @method Fragments<- ChromatinAssay
 #' @rdname Fragments
+#' @importFrom Seurat SetAssayData
 #' @concept assay
 #' @concept fragments
 #' @examples
@@ -1542,6 +1583,12 @@ dim.Motif <- function(x) {
     for (i in seq_along(along.with = value)) {
       object <- AddFragments(object = object, fragments = value[[i]])
     }
+  } else if (is.null(x = value)) {
+    object <- SetAssayData(
+      object = object,
+      slot = "fragments",
+      new.data = list()
+    )
   } else {
     object <- AddFragments(object = object, fragments = value)
   }

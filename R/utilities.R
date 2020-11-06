@@ -220,95 +220,6 @@ ClosestFeature <- function(
   return(df)
 }
 
-#' Cicero connections to links
-#'
-#' Convert the output of Cicero connections to a set of genomic ranges where
-#' the start and end coordinates of the range are the midpoints of the linked
-#' elements. Only elements on the same chromosome are included in the output.
-#'
-#' @param conns A dataframe containing co-accessible elements. This would
-#' usually be the output of \code{\link[cicero]{run_cicero}} or
-#' \code{\link[cicero]{assemble_connections}}. Specifically, this should be a
-#' dataframe where the first column contains the genomic coordinates of the
-#' first element in the linked pair of elements, with chromosome, start, end
-#' coordinates separated by "-" characters. The second column should be the
-#' second element in the linked pair, formatted in the same way as the first
-#' column. A third column should contain the co-accessibility scores.
-#' @param ccans This is optional, but if supplied should be a dataframe
-#' containing the cis-co-accessibility network (CCAN) information generated
-#' by \code{\link[cicero]{generate_ccans}}. Specifically, this should be a
-#' dataframe containing the name of the peak in the first column, and the
-#' CCAN that it belongs to in the second column.
-#' @param threshold Threshold for retaining a coaccessible site. Links with
-#' a value less than or equal to this threshold will be discarded.
-#'
-#' @export
-#' @importFrom GenomicRanges start end makeGRangesFromDataFrame
-#' @importFrom GenomeInfoDb seqnames
-#' @importFrom stringi stri_split_fixed
-#'
-#' @concept links
-#' @return Returns a \code{\link[GenomicRanges]{GRanges}} object
-ConnectionsToLinks <- function(conns, ccans = NULL, threshold = 0) {
-  # add chromosome information
-  chr1 <- stri_split_fixed(str = conns$Peak1, pattern = "-")
-  conns$chr1 <- unlist(x = chr1)[3 * (seq_along(along.with = chr1)) - 2]
-  chr2 <- stri_split_fixed(str = conns$Peak2, pattern = "-")
-  conns$chr2 <- unlist(x = chr2)[3 * (seq_along(along.with = chr2)) - 2]
-
-  # filter out trans-chr links
-  conns <- conns[conns$chr1 == conns$chr2, ]
-
-  # filter based on threshold
-  conns <- conns[!is.na(conns$coaccess), ]
-  conns <- conns[conns$coaccess > threshold, ]
-
-  # add group information
-  if (!is.null(x = ccans)) {
-    ccan.lookup <- ccans$CCAN
-    names(x = ccan.lookup) <- ccans$Peak
-    groups <- as.vector(x = ifelse(
-      test = is.na(x = ccan.lookup[conns$Peak1]),
-      yes = ccan.lookup[conns$Peak2],
-      no = ccan.lookup[conns$Peak1]
-      )
-    )
-    conns$group <- groups
-  } else {
-    conns$group <- NA
-  }
-
-  # extract genomic regions
-  coords.1 <- StringToGRanges(regions = conns$Peak1, sep = c("-", "-"))
-  coords.2 <- StringToGRanges(regions = conns$Peak2, sep = c("-", "-"))
-  chr <- seqnames(x = coords.1)
-
-  # find midpoints
-  midpoints.1 <- start(x = coords.1) + (width(x = coords.1) / 2)
-  midpoints.2 <- start(x = coords.2) + (width(x = coords.2) / 2)
-
-  startpos <- ifelse(
-    test = midpoints.1 > midpoints.2,
-    yes = midpoints.2,
-    no = midpoints.1
-  )
-  endpos <- ifelse(
-    test = midpoints.1 > midpoints.2,
-    yes = midpoints.1,
-    no = midpoints.2
-  )
-
-  link.df <- data.frame(chromosome = chr,
-                        start = startpos,
-                        end = endpos,
-                        score = conns$coaccess,
-                        group = conns$group)
-
-  # convert to genomic ranges
-  links <- makeGRangesFromDataFrame(df = link.df, keep.extra.columns = TRUE)
-  return(links)
-}
-
 #' Compute fold change between two groups of cells
 #'
 #' Computes the fold change or log2 fold change (if \code{log=TRUE}) in average
@@ -334,8 +245,10 @@ ConnectionsToLinks <- function(conns, ccans = NULL, threshold = 0) {
 #' @export
 #' @concept utilities
 #' @examples
+#' \donttest{
 #' fc <- FoldChange(object = atac_small, ident.1 = 0)
 #' head(fc)
+#' }
 FoldChange <- function(
   object,
   ident.1,
@@ -915,8 +828,20 @@ LookupGeneCoords <- function(object, gene, assay = NULL) {
 #' query regions for any given set of characteristics, specified in the input
 #' \code{meta.feature} dataframe.
 #'
-#' @param meta.feature A dataframe containing DNA sequence information
-#' @param regions Set of query regions. Must be present in rownames.
+#' For each requested feature to match, a density
+#' distribution is estimated using the \code{\link[stats]{density}} function,
+#' and a set of weights for each feature in the dataset estimated based on the
+#' density distribution. If multiple features are to be matched (for example,
+#' GC content and overall accessibility), a joint density distribution is then
+#' computed by multiplying the individual feature weights. A set of features
+#' with characteristics matching the query regions is then selected using the
+#' \code{\link[base]{sample}} function, with the probability of randomly
+#' selecting each feature equal to the joint density distribution weight.
+#'
+#' @param meta.feature A dataframe containing DNA sequence information for
+#' features to choose from
+#' @param query.feature A dataframe containing DNA sequence information for
+#' features to match.
 #' @param n Number of regions to select, with characteristics matching the query
 #' @param features.match Which features of the query to match when selecting a
 #' set of regions. A vector of column names present in the feature metadata can
@@ -933,53 +858,72 @@ LookupGeneCoords <- function(object, gene, assay = NULL) {
 #' metafeatures <- Seurat::GetAssayData(
 #'   object = atac_small[['peaks']], slot = 'meta.features'
 #' )
+#' query.feature <- metafeatures[1:10, ]
+#' features.choose <- metafeatures[11:nrow(metafeatures), ]
 #' MatchRegionStats(
-#'   meta.feature = metafeatures,
-#'   regions = head(rownames(metafeatures), 10),
+#'   meta.feature = features.choose,
+#'   query.feature = query.feature,
 #'   features.match = "percentile",
 #'   n = 10
 #' )
 MatchRegionStats <- function(
   meta.feature,
-  regions,
+  query.feature,
   features.match = c("GC.percent"),
   n = 10000,
   verbose = TRUE,
   ...
 ) {
+  if (!inherits(x = meta.feature, what = 'data.frame')) {
+    stop("meta.feature should be a data.frame")
+  }
+  if (!inherits(x = query.feature, what = "data.frame")) {
+    stop("query.feature should be a data.frame")
+  }
   if (length(x = features.match) == 0) {
     stop("Must supply at least one sequence characteristic to match")
   }
-  mf.query <- meta.feature[regions, ]
-  choosefrom <- setdiff(
-    x = rownames(x = meta.feature), y = rownames(x = mf.query)
-  )
-  if (length(x = choosefrom) < n) {
-    n <- length(x = choosefrom)
+  if (nrow(x = meta.feature) < n) {
+    n <- nrow(x = meta.feature)
     warning("Requested more features than present in supplied data.
             Returning ", n, " features")
   }
-  features.choose <- meta.feature[choosefrom, ]
-  feature.weights <- rep(0, nrow(features.choose))
-  for (i in features.match) {
-    if (verbose) {
-      message("Matching ", i, " distribution")
+  # features.choose <- meta.feature[choosefrom, ]
+  for (i in seq_along(along.with = features.match)) {
+    featmatch <- features.match[[i]]
+    if (!(featmatch %in% colnames(x = query.feature))) {
+      if (i == "GC.percent") {
+        stop("GC.percent not present in meta.features.",
+             " Run RegionStats to compute GC.percent for each feature.")
+      } else {
+        stop(i, " not present in meta.features")
+      }
     }
-    density.estimate <- density(x = mf.query[[i]], kernel = "gaussian", bw = 1)
+    if (verbose) {
+      message("Matching ", featmatch, " distribution")
+    }
+    density.estimate <- density(
+      x = query.feature[[featmatch]], kernel = "gaussian", bw = 1
+    )
     weights <- approx(
       x = density.estimate$x,
       y = density.estimate$y,
-      xout = features.choose[[i]],
+      xout = meta.feature[[featmatch]],
       yright = 0.0001,
       yleft = 0.0001
     )$y
-    feature.weights <- feature.weights + weights
+    if (i > 1) {
+      feature.weights <- feature.weights * weights
+    } else {
+      feature.weights <- weights
+    }
   }
-  feature.select <- sample(
-    x = rownames(x = features.choose),
+  feature.select <- sample.int(
+    n = nrow(x = meta.feature),
     size = n,
     prob = feature.weights
   )
+  feature.select <- rownames(x = meta.feature)[feature.select]
   return(feature.select)
 }
 
@@ -1077,8 +1021,50 @@ AddMissingCells <- function(x, cells) {
     colnames(x = null.mat) <- missing.cells
     x <- cbind(x, null.mat)
   }
-  x <- x[, cells]
+  x <- x[, cells, drop = FALSE]
   return(x)
+}
+
+#' @importFrom Seurat DefaultAssay GetAssayData
+#' @importFrom Matrix Diagonal tcrossprod rowSums
+AverageCountMatrix <- function(
+  object,
+  assay = NULL,
+  group.by = NULL,
+  idents = NULL
+) {
+  assay = SetIfNull(x = assay, y = DefaultAssay(object = object))
+  countmatrix <- GetAssayData(object = object[[assay]], slot = "counts")
+  ident.matrix <- BinaryIdentMatrix(
+    object = object,
+    group.by = group.by,
+    idents = idents
+  )
+  collapsed.counts <- tcrossprod(x = countmatrix, y = ident.matrix)
+  avg.counts <- tcrossprod(
+    x = collapsed.counts,
+    y = Diagonal(x = 1 / rowSums(x = ident.matrix))
+  )
+  return(as.matrix(x = avg.counts))
+}
+
+# Create binary cell x class matrix of group membership
+#' @importFrom Matrix sparseMatrix
+BinaryIdentMatrix <- function(object, group.by = NULL, idents = NULL) {
+  group.idents <- GetGroups(object = object, group.by = group.by, idents = idents)
+  cell.idx <- seq_along(along.with = names(x = group.idents))
+  unique.groups <- as.character(x = unique(x = group.idents))
+  ident.idx <- seq_along(along.with = unique.groups)
+  names(x = ident.idx) <- unique.groups
+  ident.matrix <- sparseMatrix(
+    i = ident.idx[as.character(x = group.idents)],
+    j = cell.idx,
+    x = 1
+  )
+  colnames(x = ident.matrix) <- names(x = group.idents)
+  rownames(x = ident.matrix) <- unique.groups
+  ident.matrix <- as(object = ident.matrix, Class = "dgCMatrix")
+  return(ident.matrix)
 }
 
 # Calculate nCount and nFeature
@@ -1339,6 +1325,24 @@ GetGroups <- function(
   return(obj.groups)
 }
 
+# row merge list of matrices
+# @param mat.list list of sparse matrices
+# @param new.rownames rownames to assign merged matrix
+#' @importFrom Seurat RowMergeSparseMatrices
+MergeMatrixParts <- function(mat.list, new.rownames) {
+  # RowMergeSparseMatrices only exported in Seurat release Dec-2019 (3.1.2)
+  merged.all <- mat.list[[1]]
+  for (i in 2:length(x = mat.list)) {
+    merged.all <- RowMergeSparseMatrices(
+      mat1 = merged.all,
+      mat2 = mat.list[[i]]
+    )
+  }
+  # reorder rows to match genomic ranges
+  merged.all <- merged.all[new.rownames, ]
+  return(merged.all)
+}
+
 # Run GetReadsInRegion for a list of Fragment objects
 # concatenate the output dataframes and return
 # @param object A Seurat or ChromatinAssay object
@@ -1365,6 +1369,10 @@ MultiGetReadsInRegion <- function(
     x = fragment.list,
     y = Fragments(object = object)
   )
+  if (length(x = fragment.list) == 0) {
+    # no fragments set
+    stop("No fragment files found")
+  }
   res <- data.frame()
   for (i in seq_along(along.with = fragment.list)) {
     tbx.path <- GetFragmentData(object = fragment.list[[i]], slot = "path")
@@ -1411,6 +1419,9 @@ SingleFileCutMatrix <- function(
 ) {
   # if multiple regions supplied, must be the same width
   cells <- SetIfNull(x = cells, y = names(x = cellmap))
+  if (length(x = region) == 0) {
+    return(NULL)
+  }
   fragments <- GetReadsInRegion(
     region = region,
     cellmap = cellmap,
@@ -1426,7 +1437,7 @@ SingleFileCutMatrix <- function(
     cut.matrix <- sparseMatrix(
       i = NULL,
       j = NULL,
-      dims = c(length(x = cells), width(x = region))
+      dims = c(length(x = cells), width(x = region)[[1]])
     )
   } else {
     fragstarts <- start.lookup[fragments$ident] + 1
@@ -1497,15 +1508,17 @@ CutMatrix <- function(
       value = seqnames.in.both,
       pruning.mode = "coarse"
     )
-    cm <- SingleFileCutMatrix(
-      region = region,
-      cellmap = cellmap,
-      tabix.file = tabix.file,
-      cells = cells,
-      verbose = FALSE
-    )
+    if (length(x = region) != 0) {
+      cm <- SingleFileCutMatrix(
+        region = region,
+        cellmap = cellmap,
+        tabix.file = tabix.file,
+        cells = cells,
+        verbose = FALSE
+      )
+      res[[i]] <- cm
+    }
     close(con = tabix.file)
-    res[[i]] <- cm
   }
   res <- Reduce(f = `+`, x = res)
   return(res)
@@ -1547,6 +1560,10 @@ MultiRegionCutMatrix <- function(
   for (i in seq_along(along.with = fragments)) {
     frag.path <- GetFragmentData(object = fragments[[i]], slot = "path")
     cellmap <- GetFragmentData(object = fragments[[i]], slot = "cells")
+    if (is.null(x = cellmap)) {
+      cellmap <- colnames(x = object)
+      names(x = cellmap) <- cellmap
+    }
     tabix.file <- TabixFile(file = frag.path)
     open(con = tabix.file)
     # remove regions that aren't in the fragment file
@@ -1592,6 +1609,9 @@ CreateRegionPileupMatrix <- function(
   cells = NULL,
   verbose = TRUE
 ) {
+  if (length(x = regions) == 0) {
+    stop("No regions supplied")
+  }
   # split into strands
   on_plus <- strand(x = regions) == "+" | strand(x = regions) == "*"
   plus.strand <- regions[on_plus, ]
@@ -1620,9 +1640,15 @@ CreateRegionPileupMatrix <- function(
   )
 
   # reverse minus strand and add together
-  full.matrix <- cut.matrix.plus + cut.matrix.minus[, rev(
-    x = colnames(x = cut.matrix.minus)
-  )]
+  if (is.null(x = cut.matrix.plus)) {
+    full.matrix <- cut.matrix.minus[, rev(x = colnames(x = cut.matrix.minus))]
+  } else if (is.null(x = cut.matrix.minus)) {
+    full.matrix <- cut.matrix.plus
+  } else {
+    full.matrix <- cut.matrix.plus + cut.matrix.minus[, rev(
+      x = colnames(x = cut.matrix.minus)
+    )]
+  }
   # rename so 0 is center
   region.width <- width(x = regions)[[1]]
   midpoint <- round(x = (region.width / 2))
@@ -1863,11 +1889,28 @@ GetRowsToMerge <- function(assay.list, all.ranges, reduced.ranges) {
 #' @importFrom utils txtProgressBar setTxtProgressBar
 #' @importFrom Matrix rowSums
 #' @importMethodsFrom Matrix t
-MergeOverlappingRows <- function(mergeinfo, assay.list, verbose = TRUE) {
+MergeOverlappingRows <- function(
+  mergeinfo,
+  assay.list,
+  slot = "counts",
+  verbose = TRUE
+) {
   merge.counts <- list()
   for (i in seq_along(along.with = assay.list)) {
     # get count matrix
-    counts <- GetAssayData(object = assay.list[[i]], slot = "counts")
+    counts <- GetAssayData(object = assay.list[[i]], slot = slot)
+
+    if (nrow(x = counts) == 0) {
+      # no counts, only data
+      # skip row merge and return empty counts matrices
+      merge.counts <- lapply(
+        X = seq_along(along.with = assay.list),
+        FUN = matrix,
+        nrow = 0,
+        ncol = 0
+      )
+      return(merge.counts)
+    }
 
     # transpose for faster access since matrix is column major
     counts <- t(x = counts)
@@ -1984,6 +2027,7 @@ PartialMatrix <- function(tabix, regions, sep = c("-", "-"), cells = NULL) {
     )
     rownames(x = featmat) <- GRangesToString(grange = regions)
     colnames(x = featmat) <- cells
+    featmat <- as(object = featmat, Class = "dgCMatrix")
     return(featmat)
   } else if (is.null(x = cells.in.regions$cells)) {
     # no fragments, no cells
@@ -1993,6 +2037,7 @@ PartialMatrix <- function(tabix, regions, sep = c("-", "-"), cells = NULL) {
       j = NULL
     )
     rownames(x = featmat) <- GRangesToString(grange = regions)
+    featmat <- as(object = featmat, Class = "dgCMatrix")
     return(featmat)
   } else {
     all.cells <- unique(x = cells.in.regions$cells)
@@ -2029,6 +2074,7 @@ PartialMatrix <- function(tabix, regions, sep = c("-", "-"), cells = NULL) {
       dims = c(length(x = missing.features), ncol(x = featmat))
     )
     rownames(x = null.mat) <- missing.features
+    null.mat <- as(object = null.mat, Class = "dgCMatrix")
     featmat <- rbind(featmat, null.mat)
   }
   return(featmat)

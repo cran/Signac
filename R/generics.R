@@ -1,3 +1,36 @@
+#' Add DNA sequence motif information
+#'
+#' Construct a \code{\link{Motif}} object containing DNA sequence motif
+#' information and add it to an existing Seurat object or ChromatinAssay.
+#' If running on a Seurat object, \code{AddMotifs} will also run
+#' \code{\link{RegionStats}} to compute the GC content of each peak and store
+#' the results in the feature metadata.
+#'
+#' @param object A Seurat object or ChromatinAssay object
+#' @param ... Additional arguments passed to other methods
+#' @export AddMotifs
+#' @rdname AddMotifs
+#' @return When running on a \code{ChromatinAssay} or \code{Seurat} object,
+#' returns a modified version of the input object. When running on a matrix,
+#' returns a \code{Motif} object.
+AddMotifs <- function(object, ...) {
+  UseMethod(generic = "AddMotifs", object = object)
+}
+
+#' Quantify aggregated genome tiles
+#'
+#' Quantifies fragment counts per cell in fixed-size genome bins across the
+#' whole genome, then removes bins with less than a desired minimum number of
+#' counts in the bin, then merges adjacent tiles into a single region.
+#'
+#' @param object A Seurat object or ChromatinAssay object
+#' @param ... Additional arguments passed to other methods
+#' @export AggregateTiles
+#' @rdname AggregateTiles
+AggregateTiles <- function(object, ...) {
+  UseMethod(generic = "AggregateTiles", object = object)
+}
+
 #' Convert objects to a ChromatinAssay
 #' @param x An object to convert to class \code{\link{ChromatinAssay}}
 #' @param ... Arguments passed to other methods
@@ -60,6 +93,28 @@ Annotation <- function(object, ...) {
 #' @export BinarizeCounts
 BinarizeCounts <- function(object, ...) {
   UseMethod(generic = "BinarizeCounts", object = object)
+}
+
+#' Call peaks
+#'
+#' Call peaks using MACS. Fragment files linked to the specified assay will be
+#' used to call peaks. If multiple fragment files are present, all will be used
+#' in a single MACS invocation. Returns the \code{.narrowPeak} MACS output as a
+#' \code{GRanges} object.
+#'
+#' See \url{https://macs3-project.github.io/MACS/} for MACS documentation.
+#'
+#' If you call peaks using MACS2 please cite:
+#' \url{https://doi.org/10.1186/gb-2008-9-9-r137}
+#'
+#' @param object A Seurat object
+#' @param ... Arguments passed to other methods
+#'
+#' @return Returns a \code{\link[GenomicRanges]{GRanges}} object
+#' @rdname CallPeaks
+#' @export CallPeaks
+CallPeaks <- function(object, ...) {
+  UseMethod(generic = "CallPeaks", object = object)
 }
 
 #' Set and get cell barcode information for a Fragment object

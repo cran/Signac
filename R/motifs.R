@@ -2,6 +2,108 @@
 #'
 NULL
 
+#' @rdname AddMotifs
+#' @method AddMotifs default
+#' @concept motifs
+#' @export
+AddMotifs.default <- function(
+  object,
+  genome,
+  pfm,
+  verbose = TRUE,
+  ...
+) {
+  if (!requireNamespace("motifmatchr", quietly = TRUE)) {
+    stop("Please install motifmatchr.\n",
+         "https://www.bioconductor.org/packages/motifmatchr/")
+  }
+  if (verbose) {
+    message("Building motif matrix")
+  }
+  motif.matrix <- CreateMotifMatrix(
+    features = object,
+    pwm = pfm,
+    genome = genome,
+    use.counts = FALSE
+  )
+  if (verbose) {
+    message("Finding motif positions")
+  }
+  motif.positions <- motifmatchr::matchMotifs(
+    pwms = pfm,
+    subject = object,
+    out = 'positions',
+    genome = genome
+  )
+  if (verbose) {
+    message("Creating Motif object")
+  }
+  motif <- CreateMotifObject(
+    data = motif.matrix,
+    positions = motif.positions,
+    pwm = pfm
+  )
+  return(motif)
+}
+
+#' @rdname AddMotifs
+#' @method AddMotifs ChromatinAssay
+#' @concept motifs
+#' @export
+AddMotifs.ChromatinAssay <- function(
+  object,
+  genome,
+  pfm,
+  verbose = TRUE,
+  ...
+) {
+  motif <- AddMotifs(
+    object = granges(x = object),
+    genome = genome,
+    pfm = pfm,
+    verbose = verbose
+  )
+  object <- SetAssayData(
+    object = object,
+    slot = 'motifs',
+    new.data = motif
+  )
+  return(object)
+}
+
+#' @param assay Name of assay to use. If NULL, use the default assay
+#' @param genome A \code{BSgenome} object
+#' @param pfm A \code{PFMatrixList} object
+#' @param verbose Display messages
+#' @importFrom Seurat DefaultAssay
+#' @rdname AddMotifs
+#' @method AddMotifs Seurat
+#' @concept motifs
+#' @export
+AddMotifs.Seurat <- function(
+  object,
+  genome,
+  pfm,
+  assay = NULL,
+  verbose = TRUE,
+  ...
+) {
+  assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  object[[assay]] <- AddMotifs(
+    object = object[[assay]],
+    genome = genome,
+    pfm = pfm,
+    verbose = verbose
+  )
+  object <- RegionStats(
+    object = object,
+    assay = assay,
+    genome = genome,
+    verbose = verbose
+  )
+  return(object)
+}
+
 #' @importFrom Seurat GetAssayData CreateAssayObject
 #' @importFrom Matrix rowSums
 #'
@@ -140,7 +242,6 @@ globalVariables(names = "pvalue", package = "Signac")
 #' @importFrom Matrix colSums
 #' @importFrom stats phyper
 #' @importFrom methods is
-#' @importFrom qvalue qvalue
 #'
 #' @export
 #' @concept motifs
@@ -164,15 +265,21 @@ FindMotifs <- function(
   background <- SetIfNull(x = background, y = rownames(x = object))
   if (is(object = background, class2 = "numeric")) {
     if (verbose) {
-      message("Selecting background regions to match input
-              sequence characteristics")
+      message("Selecting background regions to match input ",
+              "sequence characteristics")
     }
+    meta.feature <- GetAssayData(
+      object = object,
+      assay = assay,
+      slot = "meta.features"
+    )
+    mf.choose <- meta.feature[
+      setdiff(x = rownames(x = meta.feature), y = features),
+    ]
+    mf.query <- meta.feature[features, ]
     background <- MatchRegionStats(
-      meta.feature = GetAssayData(
-        object = object,
-        assay = assay,
-        slot = "meta.features"
-      ),
+      meta.feature = mf.choose,
+      query.feature = mf.query,
       regions = features,
       n = background,
       verbose = verbose,
@@ -205,7 +312,6 @@ FindMotifs <- function(
       lower.tail = FALSE
     )
   }
-  qv <- qvalue(p = p.list)
   results <- data.frame(
     motif = names(x = query.counts),
     observed = query.counts,
@@ -214,7 +320,6 @@ FindMotifs <- function(
     percent.background = percent.background,
     fold.enrichment = fold.enrichment,
     pvalue = p.list,
-    qvalue = qv$qvalues,
     motif.name = as.vector(
       x = unlist(x = motif.names[names(x = query.counts)])
     ),
