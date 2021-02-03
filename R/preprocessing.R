@@ -169,8 +169,8 @@ CreateMotifMatrix <- function(
 #' @param n Number of features to retain (default 20000).
 #' @param verbose Display messages
 #' @importFrom Seurat DefaultAssay GetAssayData "VariableFeatures<-"
-#' @return Returns a \code{\link[Seurat]{Seurat}} object with
-#' \code{\link[Seurat]{VariableFeatures}} set to the randomly sampled features.
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object with
+#' \code{\link[SeuratObject]{VariableFeatures}} set to the randomly sampled features.
 #' @export
 #' @concept preprocessing
 #' @examples
@@ -199,10 +199,12 @@ DownsampleFeatures <- function(
 #' for the object. This can be a percentile specified as 'q' followed by the
 #' minimum percentile, for example 'q5' to set the top 95\% most common features
 #' as the VariableFeatures for the object. Alternatively, this can be an integer
-#' specifying the minumum number of cells containing the feature for the feature
+#' specifying the minimum number of cells containing the feature for the feature
 #' to be included in the set of VariableFeatures. For example, setting to 10
 #' will include features in >10 cells in the set of VariableFeatures. If NULL,
-#' include all features in VariableFeatures.
+#' include all features in VariableFeatures. If NA, VariableFeatures will not be
+#' altered, and only the feature metadata will be updated with the total counts
+#' and percentile rank for each feature.
 #' @param verbose Display messages
 #'
 #' @importFrom Matrix rowSums
@@ -245,6 +247,12 @@ FindTopFeatures.Assay <- function(
   ...
 ) {
   data.use <- GetAssayData(object = object, slot = "counts")
+  if (IsMatrixEmpty(x = data.use)) {
+    if (verbose) {
+      message("Count slot empty")
+    }
+    return(object)
+  }
   hvf.info <- FindTopFeatures(
     object = data.use,
     assay = assay,
@@ -259,6 +267,9 @@ FindTopFeatures.Assay <- function(
     VariableFeatures(object = object) <- rownames(
       x = hvf.info[hvf.info$count > min.cutoff, ]
     )
+  } else if (is.na(x = min.cutoff)) {
+    # don't change the variable features
+    return(object)
   } else {
     percentile.use <- as.numeric(
       x = sub(pattern = "q", replacement = "", x = as.character(x = min.cutoff))
@@ -312,7 +323,7 @@ FindTopFeatures.Seurat <- function(
 #'
 #' @export
 #' @concept qc
-#' @return Returns a \code{\link[Seurat]{Seurat}} object
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object
 #' @examples
 #' FRiP(object = atac_small, assay = 'peaks', total.fragments = "fragments")
 FRiP <- function(
@@ -351,7 +362,7 @@ globalVariables(names = "cell", package = "Signac")
 #' @importFrom dplyr group_by summarize
 #' @importFrom stats ecdf
 #'
-#' @return Returns a \code{\link[Seurat]{Seurat}} object with
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object with
 #' added metadata for the ratio of mononucleosomal to nucleosome-free fragments
 #' per cell, and the percentile rank of each ratio.
 #' @export
@@ -520,10 +531,10 @@ RegionStats.Seurat <- function(
 #' @param method Which TF-IDF implementation to use. Choice of:
 #' \itemize{
 #'  \item{1}: The TF-IDF implementation used by Stuart & Butler et al. 2019
-#'  (\url{https://doi.org/10.1101/460147}). This computes
+#'  (\doi{10.1101/460147}). This computes
 #'  \eqn{\log(TF \times IDF)}.
 #'  \item{2}: The TF-IDF implementation used by Cusanovich & Hill
-#'  et al. 2018 (\url{https://doi.org/10.1016/j.cell.2018.06.052}). This
+#'  et al. 2018 (\doi{10.1016/j.cell.2018.06.052}). This
 #'  computes \eqn{TF \times (\log(IDF))}.
 #'  \item{3}: The log-TF method used by Andrew Hill.
 #'  This computes \eqn{\log(TF) \times \log(IDF)}.
@@ -686,7 +697,7 @@ RunTFIDF.Seurat <- function(
 #' @importFrom GenomicRanges start width strand
 #' @importFrom Seurat DefaultAssay
 #'
-#' @return Returns a \code{\link[Seurat]{Seurat}} object
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object
 #' @export
 #' @concept qc
 #' @examples
@@ -721,6 +732,9 @@ TSSEnrichment <- function(
     }
     # work out TSS positions from gene annotations
     annotations <- Annotation(object = object[[assay]])
+    if (is.null(x = annotations)) {
+      stop("No gene annotations present in assay")
+    }
     tss.positions <- GetTSSPositions(ranges = annotations)
   }
   if (!is.null(x = n)) {

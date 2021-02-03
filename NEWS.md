@@ -1,3 +1,32 @@
+# Signac 1.1.1 
+
+New functionality:
+
+* Added `group.by` parameter to `PeakPlot()` to allow coloring plotted genomic 
+ranges by metadata variables.
+* Added `peaks.group.by` and `ranges.group.by` parameters to `CoveragePlot()` to
+allow coloring plotted genomic ranges in `CoveragePlot()` to be colored by metadata
+variables.
+
+Bug fixes:
+
+* Update meta feature information (overall peak accessibility) when subsetting 
+objects to avoid counts becoming inaccurate ([#332](https://github.com/timoast/signac/issues/332))
+* Prevent dropping features when creating a merged ChromatinAssay ([#340](https://github.com/timoast/signac/pull/340))
+* Fix compilation error when using g++ version <5 ([#326](https://github.com/timoast/signac/issues/326))
+* Retain motif positions during subset ([#364](https://github.com/timoast/signac/issues/364))
+* Fix `assay` parameter in `CoveragePlot()`
+* Fix error when merging ChromatinAssay object ([#355](https://github.com/timoast/signac/issues/355))
+* Add more informative error message when all features or cells removed by parameter choices in `CreateChromatinAssay()` ([#387](https://github.com/timoast/signac/issues/387))
+* Fix bug in `CreateChromatinAssay()` when setting both `min.cells` and `min.features` arguments ([#390](https://github.com/timoast/signac/issues/390))
+* Improved support for remote fragment files
+* Fixed bug in `PlotFootprint()` when only one cell in an identity class ([#406](https://github.com/timoast/signac/issues/406))
+
+Other changes:
+
+* Added citation information to the package
+* Added `SeuratObject` dependency
+
 # Signac 1.1.0
 
 New functionality:

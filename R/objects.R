@@ -70,7 +70,7 @@ Motif <- setClass(
 
 #' The ChromatinAssay class
 #'
-#' The ChramatinAssay object is an extended \code{\link[Seurat]{Assay}}
+#' The ChromatinAssay object is an extended \code{\link[SeuratObject]{Assay}}
 #' for the storage and analysis of single-cell chromatin data.
 #'
 #' @slot ranges A \code{\link[GenomicRanges]{GRanges}} object describing the
@@ -212,6 +212,10 @@ CreateChromatinAssay <- function(
   ncount.cell <- colSums(x = data.use > 0)
   data.use <- data.use[, ncount.cell > min.features]
 
+  if (ncol(x = data.use) == 0) {
+    stop("No cells retained due to minimum feature cutoff supplied")
+  }
+
   ncell.feature <- rowSums(x = data.use > 0)
   if (!is.null(x = max.cells)) {
     if (is(object = max.cells, class2 = "character")) {
@@ -224,6 +228,9 @@ CreateChromatinAssay <- function(
     max.cells <- ncol(x = data.use)
   }
   features.keep <- (ncell.feature >= min.cells) & (ncell.feature <= max.cells)
+  if (sum(features.keep) == 0) {
+    stop("No features retained due to minimum cell cutoff supplied")
+  }
   data.use <- data.use[features.keep, ]
   ranges <- ranges[features.keep, ]
   # re-assign row names of matrix so that it's a known granges transformation
@@ -233,8 +240,8 @@ CreateChromatinAssay <- function(
     seurat.assay <- CreateAssayObject(
       counts = data.use,
       data = data,
-      min.cells = min.cells,
-      min.features = min.features
+      min.cells = -1,
+      min.features = -1 # min cell/feature filtering already done
     )
   } else {
     seurat.assay <- CreateAssayObject(
@@ -299,7 +306,7 @@ CreateChromatinAssay <- function(
 #' @param fragments A list of \code{\link{Fragment}} objects
 #' @param bias Tn5 integration bias matrix
 #' @param positionEnrichment A named list of position enrichment matrices.
-#' @param sep Charaters used to separate the chromosome, start, and end
+#' @param sep Characters used to separate the chromosome, start, and end
 #' coordinates in the row names of the data matrix
 #'
 #' @rdname as.ChromatinAssay
@@ -877,12 +884,17 @@ subset.Motif <- function(x, features = NULL, motifs = NULL, ...) {
   new.pwm <- GetMotifData(object = x, slot = "pwm")[motifs]
   new.names <- GetMotifData(object = x, slot = "motif.names")[motifs]
   new.meta <- GetMotifData(object = x, slot = "meta.data")[motifs, ]
+  new.positions <- GetMotifData(object = x, slot = "positions")
+  if (!is.null(x = new.positions)) {
+    new.positions <- new.positions[motifs]
+  }
   new.motif <- new(
     Class = "Motif",
     data = new.data,
     pwm = new.pwm,
     motif.names = new.names,
-    meta.data = new.meta
+    meta.data = new.meta,
+    positions = new.positions
   )
   return(new.motif)
 }
@@ -900,6 +912,13 @@ subset.ChromatinAssay <- function(
   # subset elements in the standard assay
   standardassay <- as(object = x, Class = "Assay")
   standardassay <- subset(x = standardassay, features = features, cells = cells)
+
+  # recompute meta features
+  standardassay <- FindTopFeatures(
+    object = standardassay,
+    min.cutoff = NA,
+    verbose = FALSE
+  )
 
   # subset genomic ranges
   ranges.keep <- granges(x = x)
@@ -1127,8 +1146,8 @@ merge.ChromatinAssay <- function(
     if (nrow(x = merged.counts) > 0) {
       new.assay <- CreateChromatinAssay(
         counts = merged.counts,
-        min.cells = 0,
-        min.features = 0,
+        min.cells = -1,
+        min.features = -1,
         max.cells = NULL,
         ranges = reduced.ranges,
         motifs = NULL,
@@ -1144,8 +1163,8 @@ merge.ChromatinAssay <- function(
     } else {
       new.assay <- CreateChromatinAssay(
         data = merged.data,
-        min.cells = 0,
-        min.features = 0,
+        min.cells = -1,
+        min.features = -1,
         max.cells = NULL,
         ranges = reduced.ranges,
         motifs = NULL,

@@ -285,6 +285,7 @@ FoldChange <- function(
     slot = "counts",
     verbose = verbose
   )[[assay]]
+  avg <- as.data.frame(x = avg)
   Idents(object = object) <- ident.stash
   # compute fold change
   colnames(x = avg) <- paste0("mean_", colnames(x = avg))
@@ -444,12 +445,12 @@ GetTSSPositions <- function(ranges) {
   return(tss)
 }
 
-#' Find interesecting regions between two objects
+#' Find intersecting regions between two objects
 #'
 #' Intersects the regions stored in the rownames of two objects and
-#' returns a vector containing the names of rows that interesect
+#' returns a vector containing the names of rows that intersect
 #' for each object. The order of the row names return corresponds
-#' to the intersecting regions, ie the nth feature of the first vector
+#' to the intersecting regions, i.e. the nth feature of the first vector
 #' will intersect the nth feature in the second vector. A distance
 #' parameter can be given, in which case features within the given
 #' distance will be called as intersecting.
@@ -1180,6 +1181,9 @@ ExtractCell <- function(x) {
 # @return Returns a data.frame
 ExtractFragments <- function(fragments, n = NULL, verbose = TRUE) {
   fpath <- GetFragmentData(object = fragments, slot = "path")
+  if (isRemote(x = fpath)) {
+    stop("Remote fragment files not supported")
+  }
   fpath <- normalizePath(path = fpath, mustWork = TRUE)
   cells <- GetFragmentData(object = fragments, slot = "cells")
   if (!is.null(x = cells)) {
@@ -1323,6 +1327,12 @@ GetGroups <- function(
     obj.groups <- obj.groups[obj.groups %in% idents]
   }
   return(obj.groups)
+}
+
+# Check if path is remote
+# @param x path/s to check
+isRemote <- function(x) {
+  return(grepl(pattern = "^http|^ftp", x = x))
 }
 
 # row merge list of matrices
@@ -1986,6 +1996,14 @@ MergeOverlappingRows <- function(
 
     if (y == 1) {
       # no rows were merged, can return counts
+      merge.counts[[i]] <- counts
+    } else if (y == 2) {
+      # only one element
+      tomerge <- matrix(data = newmat[[1]], nrow = 1)
+      colnames(x = tomerge) <- names(x = newmat[[1]])
+      rownames(x = tomerge) <- newmat.names
+      tomerge <- tomerge[, colnames(x = counts)]
+      counts <- rbind(counts, tomerge)
       merge.counts[[i]] <- counts
     } else {
       # construct sparse matrix

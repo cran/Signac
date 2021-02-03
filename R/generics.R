@@ -51,7 +51,7 @@ as.ChromatinAssay <- function(x, ...) {
 #' @param ... Arguments passed to other methods
 #'
 #' @export
-#' @return Returns a \code{\link[Seurat]{Seurat}} object with a new assay
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object with a new assay
 #' containing the allele frequencies for the informative variants.
 AlleleFreq <- function(object, ...) {
   UseMethod(generic = "AlleleFreq", object = object)
@@ -88,7 +88,7 @@ Annotation <- function(object, ...) {
 #'
 #' @param object A Seurat object
 #' @param ... Arguments passed to other methods
-#' @return Returns a \code{\link[Seurat]{Seurat}} object
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object
 #' @rdname BinarizeCounts
 #' @export BinarizeCounts
 BinarizeCounts <- function(object, ...) {
@@ -105,7 +105,7 @@ BinarizeCounts <- function(object, ...) {
 #' See \url{https://macs3-project.github.io/MACS/} for MACS documentation.
 #'
 #' If you call peaks using MACS2 please cite:
-#' \url{https://doi.org/10.1186/gb-2008-9-9-r137}
+#' \doi{10.1186/gb-2008-9-9-r137}
 #'
 #' @param object A Seurat object
 #' @param ... Arguments passed to other methods
@@ -148,13 +148,16 @@ ConvertMotifID <- function(object, ...) {
 
 #' Find most frequently observed features
 #'
-#' Find top binary features for a given assay based on total number of cells
-#' containing feature. Can specify a minumum cell count, or a lower percentile
-#' bound.
+#' Find top features for a given assay based on total number of counts for the
+#' feature. Can specify a minimum cell count, or a lower percentile
+#' bound to determine the set of variable features. Running this function will
+#' store the total counts and percentile rank for each feature in the feature
+#' metadata for the assay. To only compute the feature metadata, without
+#' changing the variable features for the assay, set \code{min.cutoff=NA}.
 #'
 #' @param object A Seurat object
 #' @param ... Arguments passed to other methods
-#' @return Returns a \code{\link[Seurat]{Seurat}} object
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object
 #' @rdname FindTopFeatures
 #' @export FindTopFeatures
 FindTopFeatures <- function(object, ...) {
@@ -168,7 +171,7 @@ FindTopFeatures <- function(object, ...) {
 #'
 #' @param object A Seurat or ChromatinAssay object
 #' @param ... Arguments passed to other methods
-#' @return Returns a \code{\link[Seurat]{Seurat}} object
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object
 #' @rdname Footprint
 #' @export Footprint
 Footprint <- function(object, ...) {
@@ -213,7 +216,7 @@ InsertionBias <- function(object, ...) {
 #'
 #' @param object A Seurat object
 #' @param ... Arguments passed to other methods
-#' @return Returns a \code{\link[Seurat]{Seurat}} object
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object
 #' @rdname GetMotifData
 #' @export GetMotifData
 GetMotifData <- function(object, ...) {
@@ -300,7 +303,7 @@ RegionStats <- function(object, ...) {
 #' @param verbose Display messages
 #' @param ... Additional arguments passed to
 #' \code{\link[chromVAR]{getBackgroundPeaks}}
-#' @return Returns a \code{\link[Seurat]{Seurat}} object with a new assay
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object with a new assay
 #' @rdname RunChromVAR
 #' @export RunChromVAR
 RunChromVAR <- function(object, ...) {
@@ -313,7 +316,7 @@ RunChromVAR <- function(object, ...) {
 #'
 #' @param object A Seurat object
 #' @param ... Arguments passed to other methods
-#' @return Returns a \code{\link[Seurat]{Seurat}} object
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object
 #' @rdname RunSVD
 #' @export RunSVD
 RunSVD <- function(object, ...) {
@@ -330,7 +333,7 @@ RunSVD <- function(object, ...) {
 #'
 #' @param object A Seurat object
 #' @param ... Arguments passed to other methods
-#' @return Returns a \code{\link[Seurat]{Seurat}} object
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object
 #' @rdname RunTFIDF
 #' @export RunTFIDF
 #' @references \url{https://en.wikipedia.org/wiki/Latent_semantic_analysis#Latent_semantic_indexing}
@@ -344,7 +347,7 @@ RunTFIDF <- function(object, ...) {
 #'
 #' @param object A Seurat object
 #' @param ... Arguments passed to other methods
-#' @return Returns a \code{\link[Seurat]{Seurat}} object
+#' @return Returns a \code{\link[SeuratObject]{Seurat}} object
 #' @rdname SetMotifData
 #' @export SetMotifData
 SetMotifData <- function(object, ...) {
