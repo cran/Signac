@@ -3,6 +3,105 @@
 #'
 NULL
 
+globalVariables(names = c("bin", "score"), package = "Signac")
+#' Plot data from BigWig
+#'
+#' Create a BigWig track. Note that this function does not work on windows.
+#'
+#' @param region GRanges object specifying region to plot
+#' @param bigwig Path to a bigwig file
+#' @param smooth Number of bases to smooth data over (rolling mean). If NULL,
+#' do not apply smoothing.
+#' @param type Plot type. Can be one of "line", "heatmap", or "coverage"
+#' @param y_label Y-axis label
+#' @param max.downsample Minimum number of positions kept when downsampling.
+#' Downsampling rate is adaptive to the window size, but this parameter will set
+#' the minimum possible number of positions to include so that plots do not
+#' become too sparse when the window size is small.
+#' @param downsample.rate Fraction of positions to retain when downsampling.
+#' Retaining more positions can give a higher-resolution plot but can make the
+#' number of points large, resulting in larger file sizes when saving the plot
+#' and a longer period of time needed to draw the plot.
+#'
+#' @importFrom ggplot2 ggplot aes_string geom_line geom_tile xlab ylab geom_area
+#' scale_fill_viridis_c
+#' @importFrom RcppRoll roll_mean
+#' @importFrom GenomicRanges start end seqnames width
+#' @importFrom dplyr slice_sample group_by mutate ungroup
+#' @concept visualization
+#'
+#' @export
+BigwigTrack <- function(
+  region,
+  bigwig,
+  smooth = 200,
+  type = "coverage",
+  y_label = "Score",
+  max.downsample = 3000,
+  downsample.rate = 0.1
+) {
+  possible_types <- c("line", "heatmap", "coverage")
+  if (!(type %in% possible_types)) {
+    stop(
+      "Invalid type requested. Choose ",
+      paste(possible_types, collapse = ", ")
+    )
+  }
+  if (.Platform$OS.type == "windows") {
+    message("BigwigTrack not supported on Windows")
+    return(NULL)
+  }
+  if (!requireNamespace("rtracklayer", quietly = TRUE)) {
+    message("Please install rtracklayer. http://www.bioconductor.org/packages/rtracklayer/")
+    return(NULL)
+  }
+  if (!inherits(x = region, what = "GRanges")) {
+    stop("region should be a GRanges object")
+  }
+  region_data <- rtracklayer::import(
+    con = bigwig,
+    which = region,
+    as = "NumericList"
+  )[[1]]
+  if (!is.null(x = smooth)) {
+    region_data <- roll_mean(x = region_data, n = smooth, fill = 0L)
+  }
+  region_data <- data.frame(
+    position = start(x = region):end(x = region),
+    score = region_data,
+    stringsAsFactors = FALSE
+  )
+  window.size = width(x = region)
+  sampling <- min(max.downsample, window.size * downsample.rate)
+  coverages <- slice_sample(.data = region_data, n = sampling)
+  p <- ggplot(
+    data = coverages,
+    mapping = aes_string(x = "position", y = "score")
+  )
+  if (type == "line") {
+    p <- p + geom_line()
+  } else if (type == "heatmap") {
+    # different downsampling needed for heatmap
+    # cut into n bins and average within each bin
+    region_data$bin <- floor(x = region_data$position / smooth)
+    region_data <- group_by(region_data, bin)
+    region_data <- mutate(region_data, score = mean(x = score))
+    region_data <- ungroup(region_data)
+    region_data <- unique(x = region_data[, c("bin", "score")])
+    p <- ggplot(
+      data = region_data,
+      mapping = aes_string(x = "bin", y = 1, fill = "score")
+    ) + geom_tile() + scale_fill_viridis_c()
+  } else if (type == "coverage") {
+    p <- p + geom_area()
+  }
+  chromosome <- as.character(x = seqnames(x = region))
+  p <- p + theme_browser() +
+    xlab(label = paste0(chromosome, " position (bp)")) +
+    ylab(label = y_label)
+  return(p)
+}
+
 globalVariables(names = c("Component", "counts"), package = "Signac")
 #' Plot sequencing depth correlation
 #'
@@ -92,6 +191,10 @@ PlotFootprint <- function(
   label.top = 3,
   label.idents = NULL
 ) {
+  assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay.")
+  }
   # TODO add option to show variance among cells
   plot.data <- GetFootprintData(
     object = object,
@@ -247,10 +350,13 @@ SingleCoveragePlot <- function(
   ranges = NULL,
   ranges.group.by = NULL,
   ranges.title = "Ranges",
+  region.highlight = NULL,
   links = TRUE,
   tile = FALSE,
   tile.size = 100,
   tile.cells = 100,
+  bigwig = NULL,
+  bigwig.type = "coverage",
   group.by = NULL,
   window = 100,
   extend.upstream = 0,
@@ -266,6 +372,9 @@ SingleCoveragePlot <- function(
 ) {
   cells <- SetIfNull(x = cells, y = colnames(x = object))
   assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("Requested assay is not a ChromatinAssay.")
+  }
   if (!is.null(x = group.by)) {
     Idents(object = object) <- group.by
   }
@@ -315,9 +424,34 @@ SingleCoveragePlot <- function(
     window = window,
     ymax = ymax,
     obj.groups = obj.groups,
+    region.highlight = region.highlight,
     downsample.rate = downsample.rate,
     max.downsample = max.downsample
   )
+  # create bigwig tracks
+  if (!is.null(x = bigwig)) {
+    if (!inherits(x = bigwig, what = "list")) {
+      warning("BigWig should be a list of file paths")
+      bigwig <- list("bigWig" = bigwig)
+    }
+    if (length(x = bigwig.type == 1)) {
+      bigwig.type <- rep(x = bigwig.type, length(x = bigwig))
+    } else if (length(x = bigwig.type) != length(x = bigwig)) {
+      stop("Must supply a bigWig track type for each bigWig file")
+    }
+    # iterate over list of files
+    bigwig.tracks <- list()
+    for (i in seq_along(along.with = bigwig)) {
+      bigwig.tracks[[i]] <- BigwigTrack(
+        region = region,
+        bigwig = bigwig[[i]],
+        y_label = names(x = bigwig)[[i]],
+        type = bigwig.type[[i]]
+      )
+    }
+  } else {
+    bigwig.tracks <- NULL
+  }
   if (!is.null(x = features)) {
     ex.plot <- ExpressionPlot(
       object = object,
@@ -412,11 +546,20 @@ SingleCoveragePlot <- function(
     bulk.plot <- NULL
   }
   nident <- length(x = unique(x = obj.groups))
+  bulk.height <- (1 / nident) * 10
+  bw.height <- bulk.height * length(x = bigwig.tracks)
   heights <- SetIfNull(
-    x = heights, y = c(10, (1 / nident) * 10, 10, 2, 1, 1, 3)
+    x = heights, y = c(10, bulk.height, bw.height, 10, 2, 1, 1, 3)
   )
+  # pre-combine bigwig tracks
+  if (!is.null(x = bigwig.tracks)) {
+    bigwig.tracks <- CombineTracks(
+      plotlist = bigwig.tracks,
+      heights = rep(x = 1, length(x = bigwig.tracks))
+    )
+  }
   p <- CombineTracks(
-    plotlist = list(p, bulk.plot, tile.plot, gene.plot,
+    plotlist = list(p, bulk.plot, bigwig.tracks, tile.plot, gene.plot,
                     peak.plot, range.plot, link.plot),
     expression.plot = ex.plot,
     heights = heights,
@@ -433,7 +576,7 @@ SingleCoveragePlot <- function(
 #
 #' @importFrom ggplot2 geom_area geom_hline facet_wrap xlab ylab theme_classic
 #' aes ylim theme element_blank element_text geom_segment scale_color_identity
-#' scale_fill_manual
+#' scale_fill_manual geom_rect aes_string
 #' @importFrom IRanges IRanges width
 #' @importFrom GenomeInfoDb seqnames
 #' @importFrom Matrix colSums
@@ -443,6 +586,7 @@ SingleCoveragePlot <- function(
 #' @importFrom methods is
 #' @importFrom GenomicRanges GRanges
 #' @importFrom scales hue_pal
+#' @importFrom S4Vectors mcols
 #' @importMethodsFrom GenomicRanges start end
 CoverageTrack <- function(
   cutmat,
@@ -452,6 +596,7 @@ CoverageTrack <- function(
   obj.groups,
   ymax,
   downsample.rate,
+  region.highlight = NULL,
   window = 100,
   max.downsample = 3000
 ) {
@@ -509,9 +654,50 @@ CoverageTrack <- function(
                         as.character(x = ymin), " - ",
                         as.character(x = ymax), ")")) +
     ylim(c(ymin, ymax)) +
-    theme_browser(legend = FALSE)
+    theme_browser(legend = FALSE) +
+    theme(panel.spacing.y = unit(x = 0, units = "line"))
   if (!is.null(x = levels.use)) {
     p <- p + scale_fill_manual(values = colors_all)
+  }
+  if (!is.null(x = region.highlight)) {
+    if (!inherits(x = region.highlight, what = "GRanges")) {
+      warning("region.highlight must be a GRanges object")
+    } else {
+      md <- mcols(x = region.highlight)
+      if ("color" %in% colnames(x = md)) {
+        color.use <- md$color
+      } else {
+        color.use <- rep(x = "grey", length(x = region.highlight))
+      }
+      df <- data.frame(
+        "start" = start(x = region.highlight),
+        "end" = end(x = region.highlight),
+        "color" = color.use
+      )
+      df$start <- ifelse(
+        test = df$start < start.pos,
+        yes = start.pos,
+        no = df$start
+      )
+      df$end <- ifelse(
+        test = df$end > end.pos,
+        yes = end.pos,
+        no = df$end
+      )
+      p <- p +
+        geom_rect(
+          data = df,
+          inherit.aes = FALSE,
+          aes_string(
+            xmin = "start",
+            xmax = "end",
+            ymin = 0,
+            ymax = ymax),
+          fill = rep(x = df$color, length(x = unique(x = coverages$group))),
+          color = "transparent",
+          alpha = 0.2
+        )
+    }
   }
   return(p)
 }
@@ -549,11 +735,22 @@ CoverageTrack <- function(
 #' If NULL, do not color by any variable.
 #' @param ranges.title Y-axis title for ranges track. Only relevant if
 #' \code{ranges} parameter is set.
+#' @param region.highlight Region to highlight on the plot. Should be a GRanges
+#' object containing the coordinates to highlight. By default, regions will be
+#' highlighted in grey. To change the color of the highlighting, include a
+#' metadata column in the GRanges object named "color" containing the color to
+#' use for each region.
 #' @param links Display links
 #' @param tile Display per-cell fragment information in sliding windows.
 #' @param tile.size Size of the sliding window for per-cell fragment tile plot
 #' @param tile.cells Number of cells to display fragment information for in tile
 #' plot.
+#' @param bigwig List of bigWig file paths to plot data from. Files can be
+#' remotely hosted. The name of each element in the list will determine the
+#' y-axis label given to the track.
+#' @param bigwig.type Type of track to use for bigWig files ("line", "heatmap",
+#' or "coverage"). Should either be a single value, or a list of values giving
+#' the type for each individual track in the provided list of bigwig files.
 #' @param cells Which cells to plot. Default all cells
 #' @param idents Which identities to include in the plot. Default is all
 #' identities.
@@ -595,7 +792,23 @@ CoverageTrack <- function(
 #'   validate.fragments = FALSE
 #' )
 #' Fragments(atac_small) <- fragments
+#'
+#' # Basic coverage plot
 #' CoveragePlot(object = atac_small, region = c("chr1-713500-714500"))
+#'
+#' # Show additional ranges
+#' ranges.show <- StringToGRanges("chr1-713750-714000")
+#' CoveragePlot(object = atac_small, region = c("chr1-713500-714500"), ranges = ranges.show)
+#'
+#' # Highlight region
+#' CoveragePlot(object = atac_small, region = c("chr1-713500-714500"), region.highlight = ranges.show)
+#'
+#' # Change highlight color
+#' ranges.show$color <- "orange"
+#' CoveragePlot(object = atac_small, region = c("chr1-713500-714500"), region.highlight = ranges.show)
+#'
+#' # Show expression data
+#' CoveragePlot(object = atac_small, region = c("chr1-713500-714500"), features = "ELK1")
 #' }
 CoveragePlot <- function(
   object,
@@ -611,10 +824,13 @@ CoveragePlot <- function(
   ranges = NULL,
   ranges.group.by = NULL,
   ranges.title = "Ranges",
+  region.highlight = NULL,
   links = TRUE,
   tile = FALSE,
   tile.size = 100,
   tile.cells = 100,
+  bigwig = NULL,
+  bigwig.type = "coverage",
   heights = NULL,
   group.by = NULL,
   window = 100,
@@ -646,11 +862,14 @@ CoveragePlot <- function(
           ranges = ranges,
           ranges.group.by = ranges.group.by,
           ranges.title = ranges.title,
+          region.highlight = region.highlight,
           assay = assay,
           links = links,
           tile = tile,
           tile.size = tile.size,
           tile.cells = tile.cells,
+          bigwig = bigwig,
+          bigwig.type = bigwig.type,
           group.by = group.by,
           window = window,
           ymax = ymax,
@@ -681,11 +900,14 @@ CoveragePlot <- function(
       ranges = ranges,
       ranges.group.by = ranges.group.by,
       ranges.title = ranges.title,
+      region.highlight = region.highlight,
       assay = assay,
       links = links,
       tile = tile,
       tile.size = tile.size,
       tile.cells = tile.cells,
+      bigwig = bigwig,
+      bigwig.type = bigwig.type,
       group.by = group.by,
       window = window,
       extend.upstream = extend.upstream,
@@ -714,6 +936,7 @@ CoveragePlot <- function(
 #' @param ... Additional parameters passed to \code{\link[ggseqlogo]{ggseqlogo}}
 #'
 #' @importFrom ggseqlogo ggseqlogo
+#' @importFrom Seurat DefaultAssay
 #' @export
 #' @concept visualization
 #' @concept motifs
@@ -730,6 +953,10 @@ MotifPlot <- function(
   use.names = TRUE,
   ...
 ) {
+  assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay.")
+  }
   data.use <- GetMotifData(object = object, assay = assay, slot = "pwm")
   if (length(x = data.use) == 0) {
     stop("Position weight matrix list for the requested assay is empty")
@@ -763,6 +990,7 @@ globalVariables(names = "group", package = "Signac")
 #'
 #' @importFrom ggplot2 ggplot geom_histogram theme_classic aes facet_wrap xlim
 #' scale_y_log10 theme element_blank
+#' @importFrom Seurat DefaultAssay
 #'
 #' @export
 #' @concept visualization
@@ -788,6 +1016,10 @@ FragmentHistogram <- function(
   ...
 ) {
   cells <- SetIfNull(x = cells, y = colnames(x = object))
+  assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay.")
+  }
   reads <- MultiGetReadsInRegion(
     object = object,
     assay = assay,
@@ -842,7 +1074,7 @@ globalVariables(names = "norm.value", package = "Signac")
 #' @param group.by Set of identities to group cells by
 #' @param idents Set of identities to include in the plot
 #'
-#' @importFrom Seurat GetAssayData
+#' @importFrom Seurat GetAssayData DefaultAssay
 #' @importFrom Matrix colMeans
 #' @importFrom ggplot2 ggplot aes geom_line xlab ylab theme_classic ggtitle
 #' theme element_blank
@@ -857,6 +1089,10 @@ TSSPlot <- function(
   group.by = NULL,
   idents = NULL
 ) {
+  assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay.")
+  }
   # get the normalized TSS enrichment matrix
   positionEnrichment <- GetAssayData(
     object = object,
@@ -1029,6 +1265,10 @@ PeakPlot <- function(
   color = "dimgrey"
 ) {
   assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay.")
+  }
+
   if (!inherits(x = region, what = "GRanges")) {
     region <- StringToGRanges(regions = region)
   }
@@ -1166,10 +1406,10 @@ LinkPlot <- function(object, region, min.cutoff = 0) {
 #' @importFrom IRanges subsetByOverlaps
 #' @importFrom GenomicRanges start end
 #' @importFrom GenomeInfoDb seqnames
-#' @importFrom ggplot2 theme_classic ylim xlim ylab xlab ggplot_build
+#' @importFrom ggplot2 theme_classic ylim xlim ylab xlab
+#' geom_segment geom_text aes_string scale_color_manual
+#' @importFrom grid arrow
 #' @importFrom S4Vectors split
-#' @importFrom ggbio autoplot
-#' @importFrom AnnotationFilter GRangesFilter
 #' @importFrom fastmatch fmatch
 #' @concept visualization
 #' @examples
@@ -1199,34 +1439,103 @@ AnnotationPlot <- function(object, region) {
   if (length(x = annotation.subset) == 0) {
     # make empty plot
     p <- ggplot(data = data.frame())
-
+    y_limit <- c(0, 1)
   } else {
-    annotation.subset <- split(
-      x = annotation.subset,
-      f = annotation.subset$gene_name
+    annotation_df_list <- reformat_annotations(
+      annotation = annotation.subset,
+      start.pos = start.pos,
+      end.pos = end.pos
     )
-    p <- suppressWarnings(expr = suppressMessages(expr = autoplot(
-      object = annotation.subset,
-      GRangesFilter(value = region),
-      fill = "darkblue",
-      size = 1/2,
-      color = "darkblue",
-      names.expr = "gene_name"
-    )))
-    p <- p@ggplot
-    # extract y-axis limits and extend slightly so the label isn't covered
-    y.limits <- ggplot_build(plot = p)$layout$panel_scales_y[[1]]$range$range
-    p <- suppressMessages(p + ylim(y.limits[[1]], y.limits[[2]] + 0.5))
+    p <- ggplot() +
+      # exons
+      geom_segment(
+        data = annotation_df_list$exons,
+        mapping = aes_string(
+          x = "start",
+          y = annotation_df_list$exons$dodge,
+          xend = "end",
+          yend = annotation_df_list$exons$dodge,
+          color = "strand"
+        ),
+        show.legend = FALSE,
+        size = 5
+      ) +
+      # gene body
+      geom_segment(
+        data = annotation_df_list$labels,
+        mapping = aes_string(
+          x = "start",
+          y = annotation_df_list$labels$dodge,
+          xend = "end",
+          yend = annotation_df_list$labels$dodge,
+          color = "strand"
+        ),
+        show.legend = FALSE,
+        size = 1/2
+      )
+    if (nrow(x = annotation_df_list$plus) > 0) {
+      # forward strand arrows
+      p <- p + geom_segment(
+        data = annotation_df_list$plus,
+        mapping = aes_string(
+          x = "start",
+          y = annotation_df_list$plus$dodge,
+          xend = "end",
+          yend = annotation_df_list$plus$dodge,
+          color = "strand"
+        ),
+        arrow = arrow(
+          ends = "last",
+          type = "open",
+          angle = 45,
+          length = unit(x = 0.05, units = "inches")
+        ),
+        show.legend = FALSE,
+        size = 1/2
+      )
+    }
+    if (nrow(x = annotation_df_list$minus) > 0) {
+      # reverse strand arrows
+      p <- p + geom_segment(
+        data = annotation_df_list$minus,
+        mapping = aes_string(
+          x = "start",
+          y = annotation_df_list$minus$dodge,
+          xend = "end",
+          yend = annotation_df_list$minus$dodge,
+          color = "strand"
+        ),
+        arrow = arrow(
+          ends = "first",
+          type = "open",
+          angle = 45,
+          length = unit(x = 0.05, units = "inches")
+        ),
+        show.legend = FALSE,
+        size = 1/2
+      )
+    }
+    # label genes
+    n_stack <- max(annotation_df_list$labels$dodge)
+    annotation_df_list$labels$dodge <- annotation_df_list$labels$dodge + (n_stack * 0.2)
+    p <- p + geom_text(
+      data = annotation_df_list$labels,
+      mapping = aes_string(x = "position", y = "dodge", label = "gene_name"),
+      size = 3
+    )
+    y_limit <- c(0.9, n_stack + (n_stack * 0.5))
   }
   p <- p +
     theme_classic() +
     ylab("Genes") +
     xlab(label = paste0(chromosome, " position (kb)")) +
     xlim(start.pos, end.pos) +
+    ylim(y_limit) +
     theme(
       axis.ticks.y = element_blank(),
       axis.text.y = element_blank()
-    )
+    ) +
+    scale_color_manual(values = c("darkblue", "darkgreen"))
   return(p)
 }
 
@@ -1920,6 +2229,9 @@ TilePlot <- function(
   idents = NULL
 ) {
   assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("Requested assay is not a ChromatinAssay.")
+  }
   region <- FindRegion(
     object = object,
     region = region,
@@ -2081,4 +2393,117 @@ theme_browser <- function(..., legend = TRUE) {
       )
   }
   return(browser.theme)
+}
+
+####################
+### Not exported ###
+####################
+
+split_body <- function(df, width = 1000) {
+  wd <- df$end - df$start
+  nbreak <- wd / width
+  if (nbreak > 1) {
+    steps <- 0:(nbreak)
+    starts <- (width * steps) + df$start
+    starts[starts > df$end] <- NULL
+  } else {
+    starts <- df$end
+  }
+  breaks <- data.frame(
+    seqnames = df$seqnames[[1]],
+    start = starts,
+    end = starts + 1,
+    strand = df$strand[[1]],
+    gene_name = df$gene_name[[1]],
+    gene_biotype = df$gene_biotype[[1]],
+    type = "arrow"
+  )
+  return(breaks)
+}
+
+reformat_annotations <- function(
+  annotation,
+  start.pos,
+  end.pos
+) {
+  annotation <- annotation[annotation$type == "exon"]
+  exons <- as.data.frame(x = annotation)
+  annotation <- split(
+    x = annotation,
+    f = annotation$gene_name
+  )
+  annotation <- lapply(X = annotation, FUN = as.data.frame)
+
+  # add gene total start / end
+  gene_bodies <- list()
+  for (i in seq_along(annotation)) {
+    df <- data.frame(
+      seqnames = annotation[[i]]$seqnames[[1]],
+      start = min(annotation[[i]]$start),
+      end = max(annotation[[i]]$end),
+      strand = annotation[[i]]$strand[[1]],
+      gene_name = annotation[[i]]$gene_name[[1]],
+      gene_biotype = annotation[[i]]$gene_biotype[[1]],
+      type = "body"
+    )
+    # trim any that extend beyond region
+    df$start <- ifelse(
+      test = df$start < start.pos,
+      yes = start.pos,
+      no = df$start
+    )
+    df$end <- ifelse(
+      test = df$end > end.pos,
+      yes = end.pos,
+      no = df$end
+    )
+    breaks <- split_body(df = df)
+    df <- rbind(df, breaks)
+    gene_bodies[[i]] <- df
+  }
+  gene_bodies <- do.call(what = rbind, args = gene_bodies)
+
+  # record if genes overlap
+  overlap_idx <- record_overlapping(annotation = gene_bodies, min.gapwidth = 1000)
+  gene_bodies$dodge <- overlap_idx[gene_bodies$gene_name]
+  exons$dodge <- overlap_idx[exons$gene_name]
+
+  label_df <- gene_bodies[gene_bodies$type == "body", ]
+  label_df$width <- label_df$end - label_df$start
+  label_df$position <- label_df$start + (label_df$width / 2)
+
+  onplus <- gene_bodies[gene_bodies$strand %in% c("*", "+"), ]
+  onminus <- gene_bodies[gene_bodies$strand == "-", ]
+
+  return(
+    list(
+      "labels" = label_df,
+      "exons" = exons,
+      "plus" = onplus,
+      "minus" = onminus
+    )
+  )
+}
+
+#' @importFrom GenomicRanges makeGRangesFromDataFrame reduce
+record_overlapping <- function(annotation, min.gapwidth = 1000) {
+  # convert back to granges
+  annotation.stash <- annotation
+  annotation$strand <- "*"
+  gr <- makeGRangesFromDataFrame(
+    df = annotation[annotation$type == "body", ], keep.extra.columns = TRUE
+  )
+  # work out which ranges overlap
+  collapsed <- reduce(
+    x = gr, with.revmap = TRUE, min.gapwidth = min.gapwidth
+  )$revmap
+  idx <- seq_along(gr)
+  for (i in seq_along(collapsed)) {
+    mrg <- collapsed[[i]]
+    for (j in seq_along(mrg)) {
+      idx[[mrg[[j]]]] <- j
+    }
+  }
+  names(x = idx) <- gr$gene_name
+  return(idx)
 }

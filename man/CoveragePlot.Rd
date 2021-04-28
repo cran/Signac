@@ -18,10 +18,13 @@ CoveragePlot(
   ranges = NULL,
   ranges.group.by = NULL,
   ranges.title = "Ranges",
+  region.highlight = NULL,
   links = TRUE,
   tile = FALSE,
   tile.size = 100,
   tile.cells = 100,
+  bigwig = NULL,
+  bigwig.type = "coverage",
   heights = NULL,
   group.by = NULL,
   window = 100,
@@ -77,6 +80,12 @@ If NULL, do not color by any variable.}
 \item{ranges.title}{Y-axis title for ranges track. Only relevant if
 \code{ranges} parameter is set.}
 
+\item{region.highlight}{Region to highlight on the plot. Should be a GRanges
+object containing the coordinates to highlight. By default, regions will be
+highlighted in grey. To change the color of the highlighting, include a
+metadata column in the GRanges object named "color" containing the color to
+use for each region.}
+
 \item{links}{Display links}
 
 \item{tile}{Display per-cell fragment information in sliding windows.}
@@ -85,6 +94,14 @@ If NULL, do not color by any variable.}
 
 \item{tile.cells}{Number of cells to display fragment information for in tile
 plot.}
+
+\item{bigwig}{List of bigWig file paths to plot data from. Files can be
+remotely hosted. The name of each element in the list will determine the
+y-axis label given to the track.}
+
+\item{bigwig.type}{Type of track to use for bigWig files ("line", "heatmap",
+or "coverage"). Should either be a single value, or a list of values giving
+the type for each individual track in the provided list of bigwig files.}
 
 \item{heights}{Relative heights for each track (accessibility, gene
 annotations, peaks, links).}
@@ -145,7 +162,23 @@ fragments <- CreateFragmentObject(
   validate.fragments = FALSE
 )
 Fragments(atac_small) <- fragments
+
+# Basic coverage plot
 CoveragePlot(object = atac_small, region = c("chr1-713500-714500"))
+
+# Show additional ranges
+ranges.show <- StringToGRanges("chr1-713750-714000")
+CoveragePlot(object = atac_small, region = c("chr1-713500-714500"), ranges = ranges.show)
+
+# Highlight region
+CoveragePlot(object = atac_small, region = c("chr1-713500-714500"), region.highlight = ranges.show)
+
+# Change highlight color
+ranges.show$color <- "orange"
+CoveragePlot(object = atac_small, region = c("chr1-713500-714500"), region.highlight = ranges.show)
+
+# Show expression data
+CoveragePlot(object = atac_small, region = c("chr1-713500-714500"), features = "ELK1")
 }
 }
 \concept{visualization}

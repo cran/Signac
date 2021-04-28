@@ -1,3 +1,40 @@
+# Signac 1.2.0
+
+New functionality:
+
+* Added `BigwigTrack()` function to plot data from bigWig files
+* Added `bigwig` and `bigwig.type` arguments to `CoveragePlot()` to
+include bigWig files in `CoveragePlot()`
+* Added `region.highlight` parameter to `CoveragePlot()`
+* Added `biotypes` parameter to `GeneActivity()` and `GetTSSPositions()` functions
+* Added `max.width` parameter to `GeneActivity()`
+* Added `min.distance` parameter to `LinkPeaks()` ([#561](https://github.com/timoast/signac/pull/561))
+
+Bug fixes:
+
+* Fixed fragment file reading when only one fragment found in requested region ([#474](https://github.com/timoast/signac/issues/474))
+* Fixed `standard.chromosomes` parameter in `GetGRangesFromEnsDb()` ([#513](https://github.com/timoast/signac/issues/513))
+* Fixed `group.by` parameter in `PlotFootprint()` ([#522](https://github.com/timoast/signac/issues/522))
+* Fixed bug that would cause some gene coordinates used by `GeneActivity()` to be 
+incorrect ([#521](https://github.com/timoast/signac/issues/521))
+* Fixed error message in `FindMotifs()` ([#549](https://github.com/timoast/signac/issues/549))
+* Fixed bug in `CountsInRegion()` ([#563](https://github.com/timoast/signac/issues/563))
+
+Other changes:
+
+* Improved speed of ChromatinAssay merging
+* Improved error message for `TSSEnrichment()` ([#485](https://github.com/timoast/signac/issues/485))
+* Improved error messages when trying to run `ChromatinAssay`-specific functions
+on non-`ChromatinAssay` assays
+* Performance improvements
+* Changed default value for `n` in `NucleosomeSignal()`
+* Enabled parallization in `TSSEnrichment()` when `fast=TRUE`
+* Added early error checking in `LinkPeaks()` ([#550](https://github.com/timoast/signac/pull/550))
+* Change to sparse matrix correlation in `LinkPeaks()` ([#550](https://github.com/timoast/signac/pull/550))
+* Moved `biovizBase` and `Biostrings` to suggested packages
+* Removed `ggbio` dependency
+* Re-implemented `AnnotationPlot()`
+
 # Signac 1.1.1 
 
 New functionality:

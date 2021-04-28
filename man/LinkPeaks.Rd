@@ -11,6 +11,7 @@ LinkPeaks(
   expression.slot = "data",
   gene.coords = NULL,
   distance = 5e+05,
+  min.distance = NULL,
   min.cells = 10,
   method = "pearson",
   genes.use = NULL,
@@ -34,6 +35,9 @@ expression assay. If NULL, extract from gene annotations stored in the assay.}
 
 \item{distance}{Distance threshold for peaks to include in regression model}
 
+\item{min.distance}{Minimum distance between peak and TSS to include in
+regression model. If NULL (default), no minimum distance is used.}
+
 \item{min.cells}{Minimum number of cells positive for the peak and gene
 needed to include in the results.}
 
@@ -54,9 +58,18 @@ to be retained}
 \item{verbose}{Display messages}
 }
 \value{
-Returns a Seurat object with the \code{Links} information set, with
-each recorded link being the correlation coefficient between the
-accessibility of the peak and expression of the gene.
+Returns a Seurat object with the \code{Links} information set. This is
+a \code{\link[GenomicRanges]{granges}} object accessible via the \code{\link{Links}}
+function, with the following information:
+\itemize{
+  \item{score: the correlation coefficient between the accessibility of the
+  peak and expression of the gene}
+  \item{zscore: the z-score of the correlation coefficient, computed based on
+  the distribution of correlation coefficients from a set of background peaks}
+  \item{pvalue: the p-value associated with the z-score for the link}
+  \item{gene: name of the linked gene}
+  \item{peak: name of the linked peak}
+}
 }
 \description{
 Find peaks that are correlated with the expression of nearby genes.

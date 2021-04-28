@@ -10,6 +10,8 @@ GeneActivity(
   features = NULL,
   extend.upstream = 2000,
   extend.downstream = 0,
+  biotypes = "protein_coding",
+  max.width = 5e+05,
   verbose = TRUE,
   ...
 )
@@ -26,9 +28,20 @@ the annotations stored in the object}
 
 \item{extend.downstream}{Number of bases to extend downstream of the TTS}
 
+\item{biotypes}{Gene biotypes to include. If NULL, use all biotypes in the
+gene annotation.}
+
+\item{max.width}{Maximum allowed gene width for a gene to be quantified.
+Setting this parameter can avoid quantifying extremely long transcripts that
+can add a relatively long amount of time. If NULL, do not filter genes based
+on width.}
+
 \item{verbose}{Display messages}
 
 \item{...}{Additional options passed to \code{\link{FeatureMatrix}}}
+}
+\value{
+Returns a sparse matrix
 }
 \description{
 Compute counts per cell in gene body and promoter region.

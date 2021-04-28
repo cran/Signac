@@ -249,8 +249,12 @@ FeatureMatrix <- function(
       )
     })
   # merge all the matrices
-  featmat <- Reduce(f = RowMergeSparseMatrices, x = mat.list)
-  return(featmat)
+  if (length(x = mat.list) == 1) {
+    return(mat.list[[1]])
+  } else {
+    featmat <- Reduce(f = RowMergeSparseMatrices, x = mat.list)
+    return(featmat)
+  }
 }
 
 #### Not Exported ####
@@ -331,17 +335,25 @@ SingleFeatureMatrix <- function(
     message("Extracting reads overlapping genomic regions")
   }
   if (nbrOfWorkers() > 1) {
-    mylapply <- future_lapply
+    matrix.parts <- future_lapply(
+      X = feature.list,
+      FUN = PartialMatrix,
+      tabix = tbx,
+      cells = cells,
+      sep = sep,
+      future.globals = list(),
+      future.scheduling = FALSE
+    )
   } else {
     mylapply <- ifelse(test = verbose, yes = pblapply, no = lapply)
+    matrix.parts <- mylapply(
+      X = feature.list,
+      FUN = PartialMatrix,
+      tabix = tbx,
+      cells = cells,
+      sep = sep
+    )
   }
-  matrix.parts <- mylapply(
-    X = feature.list,
-    FUN = PartialMatrix,
-    tabix = tbx,
-    cells = cells,
-    sep = sep
-  )
   # remove any that are NULL (no fragments for any cells in the region)
   null.parts <- sapply(X = matrix.parts, FUN = is.null)
   matrix.parts <- matrix.parts[!null.parts]
@@ -355,7 +367,7 @@ SingleFeatureMatrix <- function(
       cells = all.cells
     )
   }
-  featmat <- Reduce(f = rbind, x = matrix.parts)
+  featmat <- do.call(what = rbind, args = matrix.parts)
   if (!is.null(x = cells)) {
     # cells supplied, rename with cell name from object rather than file
     cell.convert <- names(x = cells)

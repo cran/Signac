@@ -67,6 +67,9 @@ CallPeaks.Seurat <- function(
   verbose = TRUE,
   ...
 ) {
+  if (!dir.exists(paths = outdir)) {
+    stop("Requested output directory does not exist")
+  }
   assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
   if (!is.null(x = group.by)) {
     # first check macs2 path before we spend time splitting the files
@@ -243,6 +246,7 @@ CallPeaks.Fragment <- function(
 }
 
 #' @importFrom GenomicRanges makeGRangesFromDataFrame
+#' @importFrom utils read.table
 #' @method CallPeaks default
 #' @rdname CallPeaks
 #' @concept quantification
@@ -261,6 +265,9 @@ CallPeaks.default <- function(
   verbose = TRUE,
   ...
 ) {
+  if (!dir.exists(paths = outdir)) {
+    stop("Requested output directory does not exist")
+  }
   # find macs2
   macs2.path <- SetIfNull(
     x = macs2.path,

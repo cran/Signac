@@ -36,6 +36,9 @@ AddChromatinModule <- function(
   ...
 ) {
   assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay.")
+  }
 
   # first find index of each feature
   feat.idx <- sapply(X = features, FUN = fmatch, rownames(x = object[[assay]]))
@@ -190,6 +193,7 @@ CellsPerGroup <- function(
 #' @importMethodsFrom GenomicRanges distanceToNearest
 #' @importFrom S4Vectors subjectHits mcols
 #' @importFrom methods is
+#' @importFrom Seurat DefaultAssay
 #' @return Returns a dataframe with the name of each region, the closest feature
 #' in the annotation, and the distance to the feature.
 #' @export
@@ -209,6 +213,14 @@ ClosestFeature <- function(
 ) {
   if (!is(object = regions, class2 = 'GRanges')) {
     regions <- StringToGRanges(regions = regions, ...)
+  }
+  if (inherits(x = object, what = "Seurat")) {
+    # running on Seurat object, extract the assay
+    assay <- DefaultAssay(object = object)
+    object <- object[[assay]]
+  }
+  if (!inherits(x = object, what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay.")
   }
   annotation <- SetIfNull(x = annotation, y = Annotation(object = object))
   nearest_feature <- distanceToNearest(x = regions, subject = annotation)
@@ -311,8 +323,16 @@ FoldChange <- function(
 #' the annotations stored in the object
 #' @param extend.upstream Number of bases to extend upstream of the TSS
 #' @param extend.downstream Number of bases to extend downstream of the TTS
+#' @param biotypes Gene biotypes to include. If NULL, use all biotypes in the
+#' gene annotation.
+#' @param max.width Maximum allowed gene width for a gene to be quantified.
+#' Setting this parameter can avoid quantifying extremely long transcripts that
+#' can add a relatively long amount of time. If NULL, do not filter genes based
+#' on width.
 #' @param verbose Display messages
 #' @param ... Additional options passed to \code{\link{FeatureMatrix}}
+#'
+#' @return Returns a sparse matrix
 #'
 #' @concept utilities
 #' @export
@@ -332,11 +352,17 @@ GeneActivity <- function(
   features = NULL,
   extend.upstream = 2000,
   extend.downstream = 0,
+  biotypes = "protein_coding",
+  max.width = 500000,
   verbose = TRUE,
   ...
 ) {
   # collapse to longest protein coding transcript
-  annotation <- Annotation(object = object)
+  assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay.")
+  }
+  annotation <- Annotation(object = object[[assay]])
   if (length(x = annotation) == 0) {
     stop("No gene annotations present in object")
   }
@@ -344,11 +370,17 @@ GeneActivity <- function(
     message("Extracting gene coordinates")
   }
   transcripts <- CollapseToLongestTranscript(ranges = annotation)
-  transcripts <- transcripts[transcripts$gene_biotype == "protein_coding"]
+  if (!is.null(x = biotypes)) {
+    transcripts <- transcripts[transcripts$gene_biotype %in% biotypes]
+  }
 
   # filter genes if provided
   if (!is.null(x = features)) {
     transcripts <- transcripts[transcripts$gene_name %in% features]
+  }
+  if (!is.null(x = max.width)) {
+    transcript.keep <- which(x = width(x = transcripts) < max.width)
+    transcripts <- transcripts[transcript.keep]
   }
 
   # extend to include promoters
@@ -358,13 +390,13 @@ GeneActivity <- function(
     downstream = extend.downstream
   )
 
-  assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
-
   # quantify
+  frags <- Fragments(object = object[[assay]])
+  cells <- colnames(x = object[[assay]])
   counts <- FeatureMatrix(
-    fragments = Fragments(object = object[[assay]]),
+    fragments = frags,
     features = transcripts,
-    cells = colnames(x = object[[assay]]),
+    cells = cells,
     verbose = verbose,
     ...
   )
@@ -389,7 +421,6 @@ GeneActivity <- function(
 #' @param biotypes Biotypes to keep
 #' @param verbose Display messages
 #'
-#' @importFrom biovizBase crunch
 #' @importFrom GenomeInfoDb keepStandardChromosomes seqinfo
 #' @concept utilities
 #' @export
@@ -399,21 +430,27 @@ GetGRangesFromEnsDb <- function(
   biotypes = c("protein_coding", "lincRNA", "rRNA", "processed_transcript"),
   verbose = TRUE
 ) {
+  if (!requireNamespace("biovizBase", quietly = TRUE)) {
+    stop("Please install biovizBase\n",
+         "https://www.bioconductor.org/packages/biovizBase/")
+  }
   # convert seqinfo to granges
   whole.genome <-  as(object = seqinfo(x = ensdb), Class = "GRanges")
-  whole.genome <- keepStandardChromosomes(whole.genome, pruning.mode = "coarse")
+  if (standard.chromosomes) {
+    whole.genome <- keepStandardChromosomes(whole.genome, pruning.mode = "coarse")
+  }
 
   # extract genes from each chromosome
   if (verbose) {
     tx <- sapply(X = seq_along(whole.genome), FUN = function(x){
-      crunch(
+      biovizBase::crunch(
         obj = ensdb,
         which = whole.genome[x],
         columns = c("tx_id", "gene_name", "gene_id", "gene_biotype"))
     })
   } else {
     tx <- sapply(X = seq_along(whole.genome), FUN = function(x){
-      suppressMessages(expr = crunch(
+      suppressMessages(expr = biovizBase::crunch(
         obj = ensdb,
         which = whole.genome[x],
         columns = c("tx_id", "gene_name", "gene_id", "gene_biotype")))
@@ -433,12 +470,19 @@ GetGRangesFromEnsDb <- function(
 #' transcript. Only protein coding gene biotypes are included in output.
 #'
 #' @param ranges A GRanges object containing gene annotations.
+#' @param biotypes Gene biotypes to include. If NULL, use all biotypes in the
+#' supplied gene annotation.
 #' @importFrom GenomicRanges resize
+#' @importFrom S4Vectors mcols
 #' @export
 #' @concept utilities
-GetTSSPositions <- function(ranges) {
-  # get protein coding genes
-  ranges <- ranges[ranges$gene_biotype == "protein_coding"]
+GetTSSPositions <- function(ranges, biotypes = "protein_coding") {
+  if (!("gene_biotype" %in% colnames(x = mcols(x = ranges)))) {
+    stop("Gene annotation does not contain gene_biotype information")
+  }
+  if (!is.null(x = biotypes)){
+    ranges <- ranges[ranges$gene_biotype == "protein_coding"]
+  }
   gene.ranges <- CollapseToLongestTranscript(ranges = ranges)
   # shrink to TSS position
   tss <- resize(gene.ranges, width = 1, fix = 'start')
@@ -487,6 +531,14 @@ GetIntersectingFeatures <- function(
   distance = 0,
   verbose = TRUE
 ) {
+  assay.1 <- SetIfNull(x = assay.1, y = DefaultAssay(object = object.1))
+  assay.2 <- SetIfNull(x = assay.2, y = DefaultAssay(object = object.2))
+  if (!inherits(x = object.1[[assay.1]], what = "ChromatinAssay")) {
+    stop("Requested assay in object 1 is not a ChromatinAssay.")
+  }
+  if (!inherits(x = object.2[[assay.2]], what = "ChromatinAssay")) {
+    stop("Requested assay in object 2 is not a ChromatinAssay")
+  }
   regions.1 <- GetAssayData(object = object.1, assay = assay.1, slot = "ranges")
   regions.2 <- GetAssayData(object = object.2, assay = assay.2, slot = "ranges")
   if (verbose) {
@@ -613,27 +665,23 @@ Extend <- function(
 #'
 #' @param tabix Tabix object
 #' @param region A string giving the region to extract from the fragments file
-#' @param sep Vector of separators to use for genomic string. First element is
-#' used to separate chromosome and coordinates, second separator is used to
-#' separate start and end coordinates.
 #' @param cells Vector of cells to include in output. If NULL, include all cells
 #'
-#' @importFrom Rsamtools TabixFile scanTabix
+#' @importFrom Rsamtools scanTabix
 #' @importFrom methods is
 #' @importFrom fastmatch fmatch
-#' @importFrom S4Vectors elementNROWS
 #' @export
 #' @concept utilities
 #' @return Returns a list
 #' @examples
 #' fpath <- system.file("extdata", "fragments.tsv.gz", package="Signac")
 #' GetCellsInRegion(tabix = fpath, region = "chr1-10245-762629")
-GetCellsInRegion <- function(tabix, region, sep = c("-", "-"), cells = NULL) {
+GetCellsInRegion <- function(tabix, region, cells = NULL) {
   if (!is(object = region, class2 = "GRanges")) {
     region <- StringToGRanges(regions = region)
   }
   reads <- scanTabix(file = tabix, param = region)
-  reads <- sapply(X = reads, FUN = ExtractCell, simplify = FALSE)
+  reads <- lapply(X = reads, FUN = ExtractCell)
   if (!is.null(x = cells)) {
     reads <- sapply(X = reads, FUN = function(x) {
       x <- x[fmatch(x = x, table = cells, nomatch = 0L) > 0L]
@@ -644,12 +692,7 @@ GetCellsInRegion <- function(tabix, region, sep = c("-", "-"), cells = NULL) {
       }
     })
   }
-  nrep <- elementNROWS(x = reads)
-  regions <- rep(x = names(x = reads), nrep)
-  cellnames <- unlist(x = reads, use.names = FALSE)
-  regions <- gsub(pattern = ":", replacement = sep[[1]], x = regions)
-  regions <- gsub(pattern = "-", replacement = sep[[2]], x = regions)
-  return(list(cells = cellnames, region = regions))
+  return(reads)
 }
 
 #' Counts in region
@@ -691,7 +734,7 @@ CountsInRegion <- function(
   hit.regions <- queryHits(x = overlaps)
   data.matrix <- GetAssayData(
     object = object, assay = assay, slot = "counts"
-  )[hit.regions, ]
+  )[hit.regions, , drop = FALSE]
   return(colSums(data.matrix))
 }
 
@@ -811,6 +854,9 @@ IntersectMatrix <- function(
 #' LookupGeneCoords(atac_small, gene = "MIR1302-10")
 LookupGeneCoords <- function(object, gene, assay = NULL) {
   assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay")
+  }
   annotations <- Annotation(object = object[[assay]])
   annot.sub <- annotations[annotations$gene_name == gene]
   if (length(x = annot.sub) == 0) {
@@ -893,11 +939,11 @@ MatchRegionStats <- function(
   for (i in seq_along(along.with = features.match)) {
     featmatch <- features.match[[i]]
     if (!(featmatch %in% colnames(x = query.feature))) {
-      if (i == "GC.percent") {
+      if (featmatch == "GC.percent") {
         stop("GC.percent not present in meta.features.",
              " Run RegionStats to compute GC.percent for each feature.")
       } else {
-        stop(i, " not present in meta.features")
+        stop(featmatch, " not present in meta.features")
       }
     }
     if (verbose) {
@@ -1008,6 +1054,18 @@ SubsetMatrix <- function(
 
 #### Not exported ####
 
+#' @importFrom IRanges isDisjoint
+NonOverlapping <- function(x, all.features) {
+  # x is list of assays
+  diff.features <- names(x = all.features[all.features < length(x = x)])
+  if (length(x = diff.features) == 0) {
+    return(TRUE)
+  } else {
+    diff.ranges <- StringToGRanges(regions = diff.features)
+    return(isDisjoint(x = diff.ranges))
+  }
+}
+
 #' @importFrom Matrix sparseMatrix
 AddMissingCells <- function(x, cells) {
   # add columns with zeros for cells not in matrix
@@ -1107,12 +1165,14 @@ CollapseToLongestTranscript <- function(ranges) {
         min(start),
         max(end),
         strand[[1]],
-        gene_biotype[[1]]),
-    "gene_name"
+        gene_biotype[[1]],
+        gene_name[[1]]),
+    "gene_id"
   ]
   colnames(x = collapsed) <- c(
-    "gene_name", "seqnames", "start", "end", "strand", "gene_biotype"
+    "gene_id", "seqnames", "start", "end", "strand", "gene_biotype", "gene_name"
   )
+  collapsed$gene_name <- make.unique(names = collapsed$gene_name)
   gene.ranges <- makeGRangesFromDataFrame(
     df = collapsed,
     keep.extra.columns = TRUE
@@ -1162,7 +1222,9 @@ ExtractCell <- function(x) {
     return(NULL)
   } else {
     x <- stri_split_fixed(str = x, pattern = "\t")
-    return(unlist(x = x)[5 * (seq_along(along.with = x)) - 1])
+    n <- length(x = x)
+    x <- unlist(x = x)
+    return(unlist(x = x)[5 * (1:n) - 1])
   }
 }
 
@@ -1193,7 +1255,8 @@ ExtractFragments <- function(fragments, n = NULL, verbose = TRUE) {
   }
   verbose <- as.logical(x = verbose)
   n <- SetIfNull(x = n, y = 0)
-  n <- as.integer(x = n)
+  n <- as.numeric(x = n)
+  n <- round(x = n, digits = 0)
   counts <- groupCommand(
     fragments = fpath,
     some_whitelist_cells = cells.use,
@@ -1289,6 +1352,7 @@ GetReadsInRegion <- function(
     pruning.mode = "coarse"
   )
   reads <- scanTabix(file = tabix.file, param = region)
+  invisible(x = gc(verbose = FALSE))
   reads <- TabixOutputToDataFrame(reads = reads)
   reads <- reads[
     fmatch(x = reads$cell, table = cellmap, nomatch = 0L) > 0,
@@ -1749,25 +1813,31 @@ ApplyMatrixByGroup <- function(
 # @param reads List of character vectors (the output of \code{\link{scanTabix}})
 # @param record.ident Add a column recording which region the reads overlapped
 # with
-#' @importFrom data.table rbindlist fread
-#' @importFrom utils read.table
+#' @importFrom stringi stri_split_fixed
 #' @importFrom S4Vectors elementNROWS
-# @return Returns a data.frame
 TabixOutputToDataFrame <- function(reads, record.ident = TRUE) {
   if (record.ident) {
     nrep <- elementNROWS(x = reads)
   }
   reads <- unlist(x = reads, use.names = FALSE)
-  df <- fread(
-    text = reads,
-    sep = "\t",
-    header = FALSE,
-    col.names = c("chr", "start", "end", "cell", "count"),
-    fill = TRUE
+  reads <- stri_split_fixed(str = reads, pattern = "\t")
+  n <- length(x = reads[[1]])
+  unlisted <- unlist(x = reads)
+  e1 <- unlisted[n * (seq_along(along.with = reads)) - (n - 1)]
+  e2 <- as.numeric(x = unlisted[n * (seq_along(along.with = reads)) - (n - 2)])
+  e3 <- as.numeric(x = unlisted[n * (seq_along(along.with = reads)) - (n - 3)])
+  e4 <- unlisted[n * (seq_along(along.with = reads)) - (n - 4)]
+  e5 <- as.numeric(x = unlisted[n * (seq_along(along.with = reads)) - (n - 5)])
+  df <- data.frame(
+    "chr" = e1,
+    "start" = e2,
+    "end" = e3,
+    "cell" = e4,
+    "count" = e5,
+    stringsAsFactors = FALSE,
+    check.rows = FALSE,
+    check.names = FALSE
   )
-  if (nrow(x = df) != length(x = reads)) {
-    df <- df[!is.na(x = df$start), ]
-  }
   if (record.ident) {
     df$ident <- rep(x = seq_along(along.with = nrep), nrep)
   }
@@ -2028,16 +2098,23 @@ MergeOverlappingRows <- function(
 }
 
 #' @importFrom Matrix sparseMatrix
+#' @importFrom S4Vectors elementNROWS
 PartialMatrix <- function(tabix, regions, sep = c("-", "-"), cells = NULL) {
   # construct sparse matrix for one set of regions
+  # names of the cells vector can be ignored here, conversion is handled in
+  # the parent functions
+  open(con = tabix)
   cells.in.regions <- GetCellsInRegion(
     tabix = tabix,
     region = regions,
-    cells = cells,
-    sep = sep
+    cells = cells
   )
-  if (is.null(x = cells.in.regions$cells) & !is.null(x = cells)) {
-    # zero for everything
+  close(con = tabix)
+  gc(verbose = FALSE)
+  nrep <- elementNROWS(x = cells.in.regions)
+  if (all(nrep == 0) & !is.null(x = cells)) {
+    # no fragments
+    # zero for all requested cells
     featmat <- sparseMatrix(
       dims = c(length(x = regions), length(x = cells)),
       i = NULL,
@@ -2047,8 +2124,9 @@ PartialMatrix <- function(tabix, regions, sep = c("-", "-"), cells = NULL) {
     colnames(x = featmat) <- cells
     featmat <- as(object = featmat, Class = "dgCMatrix")
     return(featmat)
-  } else if (is.null(x = cells.in.regions$cells)) {
-    # no fragments, no cells
+  } else if (all(nrep == 0)) {
+    # no fragments, no cells requested
+    # create empty matrix
     featmat <- sparseMatrix(
       dims = c(length(x = regions), 0),
       i = NULL,
@@ -2058,44 +2136,46 @@ PartialMatrix <- function(tabix, regions, sep = c("-", "-"), cells = NULL) {
     featmat <- as(object = featmat, Class = "dgCMatrix")
     return(featmat)
   } else {
-    all.cells <- unique(x = cells.in.regions$cells)
-    all.features <- unique(x = cells.in.regions$region)
-    cell.lookup <- seq_along(along.with = all.cells)
-    feature.lookup <- seq_along(along.with = all.features)
-    names(x = cell.lookup) <- all.cells
-    names(x = feature.lookup) <- all.features
-    matrix.features <- feature.lookup[cells.in.regions$region]
-    matrix.cells <- cell.lookup[cells.in.regions$cells]
-    nrep <- length(x = cells.in.regions$cells)
-    rm(cells.in.regions)
+    # fragments detected
+    if (is.null(x = cells)) {
+      all.cells <- unique(x = unlist(x = cells.in.regions))
+      cell.lookup <- seq_along(along.with = all.cells)
+      names(x = cell.lookup) <- all.cells
+    } else {
+      cell.lookup <- seq_along(along.with = cells)
+      names(cell.lookup) <- cells
+    }
+    # convert cell name to integer
+    cells.in.regions <- unlist(x = cells.in.regions)
+    cells.in.regions <- unname(obj = cell.lookup[cells.in.regions])
+    all.features <- GRangesToString(grange = regions, sep = sep)
+    feature.vec <- rep(x = seq_along(along.with = all.features), nrep)
     featmat <- sparseMatrix(
-      i = matrix.features,
-      j = matrix.cells,
-      x = rep(x = 1, nrep)
+      i = feature.vec,
+      j = cells.in.regions,
+      x = rep(x = 1, length(x = cells.in.regions))
     )
     featmat <- as(Class = "dgCMatrix", object = featmat)
-    rownames(x = featmat) <- names(x = feature.lookup)
-    colnames(x = featmat) <- names(x = cell.lookup)
+    rownames(x = featmat) <- all.features[1:max(feature.vec)]
+    colnames(x = featmat) <- names(x = cell.lookup)[1:max(cells.in.regions)]
+    # add zero columns for missing cells
+    if (!is.null(x = cells)) {
+      featmat <- AddMissingCells(x = featmat, cells = cells)
+    }
+    # add zero rows for missing features
+    missing.features <- all.features[!(all.features %in% rownames(x = featmat))]
+    if (length(x = missing.features) > 0) {
+      null.mat <- sparseMatrix(
+        i = c(),
+        j = c(),
+        dims = c(length(x = missing.features), ncol(x = featmat))
+      )
+      rownames(x = null.mat) <- missing.features
+      null.mat <- as(object = null.mat, Class = "dgCMatrix")
+      featmat <- rbind(featmat, null.mat)
+    }
+    return(featmat)
   }
-
-  # add zero columns for missing cells
-  if (!is.null(x = cells)) {
-    featmat <- AddMissingCells(x = featmat, cells = cells)
-  }
-  # add zero rows for missing features
-  all.features <- GRangesToString(grange = regions, sep = sep)
-  missing.features <- all.features[!(all.features %in% rownames(x = featmat))]
-  if (length(x = missing.features) > 0) {
-    null.mat <- sparseMatrix(
-      i = c(),
-      j = c(),
-      dims = c(length(x = missing.features), ncol(x = featmat))
-    )
-    rownames(x = null.mat) <- missing.features
-    null.mat <- as(object = null.mat, Class = "dgCMatrix")
-    featmat <- rbind(featmat, null.mat)
-  }
-  return(featmat)
 }
 
 # Convert PFMMatrix to

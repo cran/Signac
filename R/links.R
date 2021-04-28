@@ -21,6 +21,9 @@ GetLinkedPeaks <- function(
   min.abs.score = 0
 ) {
   assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay")
+  }
   lnk <- Links(object = object[[assay]])
   if (length(x = lnk) == 0) {
     stop("No links present in assay. Run LinkPeaks first.")
@@ -48,6 +51,9 @@ GetLinkedGenes <- function(
   min.abs.score = 0
 ) {
   assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay")
+  }
   lnk <- Links(object = object[[assay]])
   if (length(x = lnk) == 0) {
     stop("No links present in assay. Run LinkPeaks first.")
@@ -168,6 +174,8 @@ ConnectionsToLinks <- function(conns, ccans = NULL, threshold = 0) {
 #' @param gene.coords GRanges object containing coordinates of genes in the
 #' expression assay. If NULL, extract from gene annotations stored in the assay.
 #' @param distance Distance threshold for peaks to include in regression model
+#' @param min.distance Minimum distance between peak and TSS to include in
+#' regression model. If NULL (default), no minimum distance is used.
 #' @param min.cells Minimum number of cells positive for the peak and gene
 #' needed to include in the results.
 #' @param genes.use Genes to test. If NULL, determine from expression assay.
@@ -187,11 +195,21 @@ ConnectionsToLinks <- function(conns, ccans = NULL, threshold = 0) {
 #' @importFrom future.apply future_lapply
 #' @importFrom future nbrOfWorkers
 #' @importFrom pbapply pblapply
+#' @importFrom qlcMatrix corSparse
 #' @importMethodsFrom Matrix t
 #'
-#' @return Returns a Seurat object with the \code{Links} information set, with
-#' each recorded link being the correlation coefficient between the
-#' accessibility of the peak and expression of the gene.
+#' @return Returns a Seurat object with the \code{Links} information set. This is
+#' a \code{\link[GenomicRanges]{granges}} object accessible via the \code{\link{Links}}
+#' function, with the following information:
+#' \itemize{
+#'   \item{score: the correlation coefficient between the accessibility of the
+#'   peak and expression of the gene}
+#'   \item{zscore: the z-score of the correlation coefficient, computed based on
+#'   the distribution of correlation coefficients from a set of background peaks}
+#'   \item{pvalue: the p-value associated with the z-score for the link}
+#'   \item{gene: name of the linked gene}
+#'   \item{peak: name of the linked peak}
+#' }
 #'
 #' @export
 #' @concept links
@@ -202,6 +220,7 @@ LinkPeaks <- function(
   expression.slot = "data",
   gene.coords = NULL,
   distance = 5e+05,
+  min.distance = NULL,
   min.cells = 10,
   method = "pearson",
   genes.use = NULL,
@@ -210,6 +229,21 @@ LinkPeaks <- function(
   score_cutoff = 0.05,
   verbose = TRUE
 ) {
+  if (!inherits(x = object[[peak.assay]], what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay")
+  }
+  if (!is.null(x = min.distance)) {
+    if (!is.numeric(x = min.distance)) {
+      stop("min.distance should be a numeric value")
+    }
+    if (min.distance < 0) {
+      warning("Requested a negative min.distance value, setting min.distance to zero")
+      min.distance <- NULL
+    } else if (min.distance == 0) {
+      min.distance <- NULL
+    }
+  }
+
   if (is.null(x = gene.coords)) {
     gene.coords <- CollapseToLongestTranscript(
       ranges = Annotation(object = object[[peak.assay]])
@@ -266,6 +300,20 @@ LinkPeaks <- function(
     genes = gene.coords.use,
     distance = distance
   )
+  if (!is.null(x = min.distance)) {
+    peak_distance_matrix_min <- DistanceToTSS(
+      peaks = peaks,
+      genes = gene.coords.use,
+      distance = min.distance
+    )
+    peak_distance_matrix <- peak_distance_matrix - peak_distance_matrix_min
+  }
+  if (sum(peak_distance_matrix) == 0) {
+    stop("No peaks fall within distance threshold\n",
+         "Have you set the proper genome and seqlevelsStyle for ",
+         peak.assay,
+         " assay?")
+  }
   genes.use <- colnames(x = peak_distance_matrix)
   all.peaks <- rownames(x = peak.data)
 
@@ -285,19 +333,19 @@ LinkPeaks <- function(
     X = seq_along(along.with = genes.use),
     FUN = function(i) {
       peak.use <- as.logical(x = peak_distance_matrix[, genes.use[[i]]])
-      gene.expression <- expression.data[genes.use[[i]], ]
+      gene.expression <- t(x = expression.data[genes.use[[i]], , drop = FALSE])
       gene.chrom <- as.character(x = seqnames(x = gene.coords.use[i]))
 
       if (sum(peak.use) < 2) {
         # no peaks close to gene
         return(list("gene" = NULL, "coef" = NULL, "zscore" = NULL))
       } else {
-        peak.access <- peak.data[, peak.use]
-        coef.result <- cor(
-          x = as.matrix(x = peak.access),
-          y = as.matrix(x = gene.expression),
-          method = method
+        peak.access <- peak.data[, peak.use, drop = FALSE]
+        coef.result <- corSparse(
+          X = peak.access,
+          Y = gene.expression
         )
+        rownames(x = coef.result) <- colnames(x = peak.access)
         coef.result <- coef.result[abs(x = coef.result) > score_cutoff, , drop = FALSE]
 
         if (nrow(x = coef.result) == 0) {
@@ -325,12 +373,12 @@ LinkPeaks <- function(
             }
           )
           # run background correlations
-          bg.access <- peak.data[, unlist(x = bg.peaks)]
-          bg.coef <- cor(
-            x = as.matrix(x = bg.access),
-            y = as.matrix(x = gene.expression),
-            method = method
+          bg.access <- peak.data[, unlist(x = bg.peaks), drop = FALSE]
+          bg.coef <- corSparse(
+            X = bg.access,
+            Y = gene.expression
           )
+          rownames(bg.coef) <- colnames(bg.access)
           zscores <- vector(mode = "numeric", length = length(x = peaks.test))
           for (j in seq_along(along.with = peaks.test)) {
             coef.use <- bg.coef[(((j - 1) * n_sample) + 1):(j * n_sample), ]

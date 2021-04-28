@@ -317,7 +317,6 @@ CreateFragmentObject <- function(
 #' @param verbose Display messages
 #' @export
 #' @concept fragments
-#' @importFrom data.table fread
 ValidateCells <- function(
   object,
   cells = NULL,
@@ -421,6 +420,7 @@ Cells.Fragment <- function(x, ...) {
 }
 
 # Re-export SeuratObject generic
+#' @importFrom SeuratObject Cells
 #' @export
 SeuratObject::Cells
 
