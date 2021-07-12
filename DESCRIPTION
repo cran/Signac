@@ -1,7 +1,7 @@
 Package: Signac
 Title: Analysis of Single-Cell Chromatin Data
-Version: 1.2.1
-Date: 2021-05-11
+Version: 1.3.0
+Date: 2021-07-09
 Authors@R: c(
   person(given = 'Tim', family = 'Stuart', email = 'tstuart@nygenome.org', role = c('aut', 'cre'), comment = c(ORCID = '0000-0002-3044-0897')),
   person(given = 'Avi', family = 'Srivastava', email = 'asrivastava@nygenome.org', role = 'aut', comment = c(ORCID = '0000-0001-9798-2079')),
@@ -27,20 +27,21 @@ Imports: GenomeInfoDb, GenomicRanges, IRanges, Matrix, Rsamtools,
         ggseqlogo, irlba, pbapply, tidyr, patchwork, stats, utils,
         BiocGenerics, ggrepel, stringi, fastmatch, lsa, RcppRoll,
         scales, Rcpp, ggforce, qlcMatrix, grid
-Collate: 'RcppExports.R' 'data.R' 'generics.R' 'dimension_reduction.R'
-        'footprinting.R' 'fragments.R' 'genomeinfodb-methods.R'
-        'granges-methods.R' 'iranges-methods.R' 'links.R' 'mito.R'
-        'motifs.R' 'objects.R' 'peaks.R' 'preprocessing.R'
-        'quantification.R' 'utilities.R' 'visualization.R'
+Collate: 'RcppExports.R' 'data.R' 'differential_accessibility.R'
+        'generics.R' 'dimension_reduction.R' 'footprinting.R'
+        'fragments.R' 'genomeinfodb-methods.R' 'granges-methods.R'
+        'iranges-methods.R' 'links.R' 'mito.R' 'motifs.R' 'objects.R'
+        'peaks.R' 'preprocessing.R' 'quantification.R' 'utilities.R'
+        'visualization.R'
 Suggests: testthat (>= 2.1.0), chromVAR, SummarizedExperiment,
         TFBSTools, motifmatchr, BSgenome, shiny, miniUI, rtracklayer,
         biovizBase, Biostrings
 NeedsCompilation: yes
-Packaged: 2021-05-11 12:59:40 UTC; stuartt
+Packaged: 2021-07-12 12:14:29 UTC; stuartt
 Author: Tim Stuart [aut, cre] (<https://orcid.org/0000-0002-3044-0897>),
   Avi Srivastava [aut] (<https://orcid.org/0000-0001-9798-2079>),
   Paul Hoffman [ctb] (<https://orcid.org/0000-0002-7693-8957>),
   Rahul Satija [ctb] (<https://orcid.org/0000-0001-9448-8833>)
 Maintainer: Tim Stuart <tstuart@nygenome.org>
 Repository: CRAN
-Date/Publication: 2021-05-11 14:22:15 UTC
+Date/Publication: 2021-07-12 13:00:02 UTC
