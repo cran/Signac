@@ -18,19 +18,10 @@ Documentation and tutorials can be found at
 
 ## Installation
 
-Signac requires that [Bioconductor](https://www.bioconductor.org/) is
-installed:
-
-``` r
-if (!requireNamespace("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-BiocManager::install()
-setRepositories(ind=1:2)
-```
-
 To install the latest release of Signac from CRAN:
 
 ``` r
+setRepositories(ind=1:3) # needed to automatically install Bioconductor dependencies
 install.packages("Signac")
 ```
 
