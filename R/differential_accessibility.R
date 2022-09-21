@@ -8,7 +8,6 @@ FoldChange.ChromatinAssay <- function(
   cells.2,
   features = NULL,
   slot = "data",
-  pseudocount.use = 1,
   fc.name = NULL,
   mean.fxn = NULL,
   base = 2,
@@ -17,8 +16,10 @@ FoldChange.ChromatinAssay <- function(
   if (!requireNamespace(package = "Seurat", quietly = TRUE)) {
     stop("Please install Seurat: install.packages('Seurat')")
   }
-  mean.fxn <-  function(x) {
-    return(log(x = rowMeans(x = x) + pseudocount.use, base = base))
+  if (is.null(x = mean.fxn)) {
+    mean.fxn <-  function(x) {
+      return(log(x = rowMeans(x = x) + 1/10000, base = base))
+    }
   }
   # Omit the decimal value of e from the column name if base == exp(1)
   base.text <- ifelse(

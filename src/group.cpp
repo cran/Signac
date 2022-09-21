@@ -26,7 +26,7 @@ SEXP groupCommand(
   // C based buffered string parsing
   char* cb_char;
   size_t line_counter {1};
-  uint32_t buffer_length = 256;
+  uint32_t buffer_length = 4096;
   char *buffer = new char[buffer_length];
 
   // Hash Map storing the count data
@@ -51,7 +51,7 @@ SEXP groupCommand(
 
   // char * to string extraction
   std::string cb_seq, line_seq;
-  cb_seq.reserve(32);
+  cb_seq.reserve(2048);
   line_seq.reserve(buffer_length);
 
   // metadata from fragments file
@@ -85,9 +85,21 @@ SEXP groupCommand(
   // looping over the fragments file
   do {
     cb_char = strtok ( buffer, "\t" );
+    
+    if (cb_char == NULL) {
+      Rcpp::Rcerr << "Error: fragment file lines too long\n" << std::flush;
+      gzclose(fileHandler);
+      return (Rcpp::DataFrame::create());
+    }
 
     for (auto i=1; i<=4; i++) {
       cb_char = strtok (NULL, "\t");
+      
+      if (cb_char == NULL) {
+        Rcpp::Rcerr << "Error: fragment file lines too long\n" << std::flush;
+        gzclose(fileHandler);
+        return (Rcpp::DataFrame::create());
+      }
 
       switch(i) {
       case 3:
