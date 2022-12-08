@@ -80,7 +80,15 @@ Motif <- setClass(
 #' @slot seqinfo A \code{\link[GenomeInfoDb]{Seqinfo}} object containing basic
 #' information about the genome sequence used.
 #' @slot annotation A  \code{\link[GenomicRanges]{GRanges}} object containing
-#' genomic annotations
+#' genomic annotations. This should be a GRanges object with the following 
+#' columns:
+#' \itemize{
+#'   \item{tx_id: Transcript ID}
+#'   \item{gene_name: Gene name}
+#'   \item{gene_id: Gene ID}
+#'   \item{gene_biotype: Gene biotype (e.g. "protein_coding", "lincRNA")}
+#'   \item{type: Annotation type (e.g. "exon", "gap")}
+#' }
 #' @slot bias A vector containing Tn5 integration bias information
 #' (frequency of Tn5 integration at different kmers)
 #' @slot positionEnrichment A named list of matrices containing positional
@@ -898,10 +906,10 @@ SetMotifData.Seurat <- function(object, assay = NULL, ...) {
 subset.Motif <- function(x, features = NULL, motifs = NULL, ...) {
   features <- SetIfNull(x = features, y = rownames(x = x))
   motifs <- SetIfNull(x = motifs, y = colnames(x = x))
-  new.data <- GetMotifData(object = x, slot = "data")[features, motifs]
+  new.data <- GetMotifData(object = x, slot = "data")[features, motifs, drop = FALSE]
   new.pwm <- GetMotifData(object = x, slot = "pwm")[motifs]
   new.names <- GetMotifData(object = x, slot = "motif.names")[motifs]
-  new.meta <- GetMotifData(object = x, slot = "meta.data")[motifs, ]
+  new.meta <- GetMotifData(object = x, slot = "meta.data")[motifs, , drop = FALSE]
   new.positions <- GetMotifData(object = x, slot = "positions")
   if (!is.null(x = new.positions)) {
     new.positions <- new.positions[motifs]

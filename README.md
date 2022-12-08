@@ -1,4 +1,4 @@
-# Signac
+# Signac <img align="right" src="man/figures/logo.svg" style="height:100px;" />
 
 [![R-CMD-check](https://github.com/stuart-lab/signac/workflows/R-CMD-check/badge.svg)](https://github.com/stuart-lab/signac/actions)
 [![CRAN
@@ -40,6 +40,12 @@ file](https://github.com/stuart-lab/signac/blob/develop/NEWS.md), also
 available on the [Signac
 website](https://stuartlab.org/signac/news/index.html).
 
+## Contributing
+
+We welcome contributions to the Signac package. Please see the
+[contribution guide](https://github.com/stuart-lab/signac/blob/develop/CONTRIBUTING.md)
+for more information.
+
 ## Getting help
 
 If you encounter a bug or have a feature request, please open an
@@ -48,6 +54,12 @@ If you encounter a bug or have a feature request, please open an
 If you would like to discuss questions related to single-cell analysis,
 you can open a
 [discussion](https://github.com/stuart-lab/signac/discussions).
+
+## Roadmap
+
+Signac runs on a quarterly release schedule. Additional releases will be 
+scheduled in the case of urgent bug fixes. The development roadmap can be viewed
+on GitHub [here](https://github.com/orgs/stuart-lab/projects/1).
 
 ## Citing Signac
 
