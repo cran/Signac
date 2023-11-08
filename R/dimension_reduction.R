@@ -79,6 +79,12 @@ RunSVD.default <- function(
   tol = 1e-05,
   ...
 ) {
+  if (is.null(x = rownames(x = object))) {
+    rownames(x = object) <- seq_len(length.out = nrow(x = object))
+  }
+  if (is.null(x = colnames(x = object))) {
+    colnames(x = object) <- seq_len(length.out = ncol(x = object))
+  }
   n <- min(n, (ncol(x = object) - 1))
   if (verbose) {
     message("Running SVD")
@@ -128,7 +134,9 @@ RunSVD.default <- function(
 #' @concept dimension_reduction
 #' @method RunSVD Assay
 #' @examples
+#' \dontrun{
 #' RunSVD(atac_small[['peaks']])
+#' }
 RunSVD.Assay <- function(
   object,
   assay = NULL,
@@ -157,13 +165,48 @@ RunSVD.Assay <- function(
   return(reduction.data)
 }
 
+#' @param features Which features to use. If NULL, use variable features
+#'
+#' @rdname RunSVD
+#' @importFrom SeuratObject VariableFeatures GetAssayData
+#' @export
+#' @concept dimension_reduction
+#' @method RunSVD StdAssay
+#' @examples
+#' \dontrun{
+#' RunSVD(atac_small[['peaks']])
+#' }
+RunSVD.StdAssay <- function(
+    object,
+    assay = NULL,
+    features = NULL,
+    n = 50,
+    reduction.key = "LSI_",
+    scale.max = NULL,
+    verbose = TRUE,
+    ...
+) {
+  RunSVD.Assay(
+    object = object,
+    assay = assay,
+    features = features,
+    n = n,
+    reduction.key = reduction.key,
+    scale.max = scale.max,
+    verbose = verbose,
+    ...
+  )
+}
+
 #' @param reduction.name Name for stored dimension reduction object.
 #' Default 'svd'
 #' @rdname RunSVD
 #' @export
 #' @concept dimension_reduction
 #' @examples
+#' \dontrun{
 #' RunSVD(atac_small)
+#' }
 #' @method RunSVD Seurat
 RunSVD.Seurat <- function(
   object,

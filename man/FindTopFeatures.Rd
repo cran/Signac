@@ -4,6 +4,7 @@
 \alias{FindTopFeatures}
 \alias{FindTopFeatures.default}
 \alias{FindTopFeatures.Assay}
+\alias{FindTopFeatures.StdAssay}
 \alias{FindTopFeatures.Seurat}
 \title{Find most frequently observed features}
 \usage{
@@ -12,6 +13,8 @@ FindTopFeatures(object, ...)
 \method{FindTopFeatures}{default}(object, assay = NULL, min.cutoff = "q5", verbose = TRUE, ...)
 
 \method{FindTopFeatures}{Assay}(object, assay = NULL, min.cutoff = "q5", verbose = TRUE, ...)
+
+\method{FindTopFeatures}{StdAssay}(object, assay = NULL, min.cutoff = "q5", verbose = TRUE, ...)
 
 \method{FindTopFeatures}{Seurat}(object, assay = NULL, min.cutoff = "q5", verbose = TRUE, ...)
 }
@@ -47,7 +50,8 @@ metadata for the assay. To only compute the feature metadata, without
 changing the variable features for the assay, set \code{min.cutoff=NA}.
 }
 \examples{
-FindTopFeatures(object = atac_small[['peaks']][])
+FindTopFeatures(object = atac_small[['peaks']]['data'])
+FindTopFeatures(object = atac_small[['peaks']])
 FindTopFeatures(object = atac_small[['peaks']])
 FindTopFeatures(atac_small)
 }

@@ -526,24 +526,131 @@ CreateMotifObject <- function(
   return(motif.obj)
 }
 
+# Update chromatin object 
+#
+# Create a new \code{\link[SeuratObject]} with the cells only in the 
+# chromatin/expression assays. This is used for V5 objects, such as an 
+# extended reference object, that can have more cells in the whole object 
+# than are in the chromatin assay. 
+#
+# @param object A \code{\link[SeuratObject]}
+# @param chromatin.assay A list of the name(s) of the chromatin assay 
+# @param expression.assay The name of the expression assay
+# @param features NULL or a list of features. If features is not null, 
+# the expression assay will be added to the object 
+# @return Returns a new \code{\link[SeuratObject]} that only contains 
+# the cells in the chromatin assay 
+#' @importFrom SeuratObject Assays CreateSeuratObject
+UpdateChromatinObject <- function(
+  object, 
+  chromatin.assay, 
+  expression.assay = NULL,
+  features = NULL
+) {
+  op <- options(Seurat.object.assay.calcn = FALSE)
+  on.exit(expr = options(op), add = TRUE)
+  lapply(X = chromatin.assay, FUN = function(x) {
+    if (!(x %in% Assays(object))) {
+      stop("The requested assay is not in the object.")
+    }
+  })
+  # Create new seurat object 
+  new.object <- CreateSeuratObject(
+    counts = object[[chromatin.assay[[1]]]], 
+    assay = chromatin.assay[[1]],
+    meta.data = slot(object, name = "meta.data")
+  )
+  if (length(chromatin.assay) > 1){
+    for (i in 2:length(chromatin.assay)){
+      if (!identical(colnames(new.object[[chromatin.assay[[1]]]]), 
+                     colnames(object[[chromatin.assay[[i]]]]))) {
+        stop("All chromatin assays must have the same cells.")
+      }
+      new.object[[chromatin.assay[[i]]]] <- object[[chromatin.assay[[i]]]]
+    }
+  }
+  # Add expression assay if applicable and if Seurat Object v5 is loaded
+  if (!is.null(features)){
+    if (!is.null(expression.assay)){
+      if (utils::packageVersion("SeuratObject") >= package_version("4.9.9")) {
+        if (!(expression.assay %in% Assays(object))){
+          stop("The requested assay is not in the object.")
+        }
+        if (!all(colnames(new.object) %in% colnames(object[[expression.assay]]))){
+          stop("Chromatin and expression assays have different cells.")
+        }
+        # Convert BP Cells to sparse matrix 
+        for (i in SeuratObject::Layers(object[[expression.assay]])){
+          layer.data <- SeuratObject::LayerData(object = object, 
+                                  assay = expression.assay, 
+                                  layer = i)
+          if(inherits(layer.data, what = "IterableMatrix")) {
+            warning("Converting IterableMatrix to sparse dgCMatrix", 
+                    call. = FALSE)
+            SeuratObject::LayerData(object = object, 
+                      assay = expression.assay, 
+                      layer = i) <- as(object = layer.data, 
+                                       Class = "dgCMatrix")
+          }
+        }
+        # Subset expression data if necessary
+        if(!suppressWarnings(all(colnames(object[[expression.assay]]) == colnames(new.object)))){
+          warning("Subsetting expression assay to have same cells as chromatin assay.", 
+                  call. = FALSE)
+          new.object[[expression.assay]] <- subset(x = object[[expression.assay]], 
+                                                   cells = colnames(new.object))
+        } else {
+          new.object[[expression.assay]] <- object[[expression.assay]]
+        }
+      } else {
+        warning("Cannot access layers if SeuratObject version is not 5.0.0 or greater.", 
+                "Please update SeuratObject to also visualize expression data when your",
+                "object has layers with different numbers of cells.", 
+                call. = FALSE, 
+                immediate. = TRUE)
+      }
+    }
+  }
+  return(new.object)
+}
+
+
 #' @importFrom SeuratObject GetAssayData
 #' @method GetAssayData ChromatinAssay
+#' @importFrom lifecycle deprecated is_present
 #' @export
 #' @concept assay
 GetAssayData.ChromatinAssay <- function(
   object,
-  slot = "data",
+  layer = "data",
   assay = NULL,
+  slot = deprecated(),
   ...
 ) {
-  if (!(slot %in% slotNames(x = object))) {
+  if (is_present(arg = slot)) {
+    layer <- slot
+  }
+  if (!(layer %in% slotNames(x = object))) {
     stop(
-      "slot must be one of ",
+      "layer must be one of ",
       paste(slotNames(x = object), collapse = ", "),
       call. = FALSE
     )
   }
-  return(slot(object = object, name = slot))
+  return(methods::slot(object = object, name = layer))
+}
+
+#' @importFrom SeuratObject LayerData
+#' @method LayerData ChromatinAssay
+#' @export
+#' @concept assay
+LayerData.ChromatinAssay <- function(
+    object,
+    layer = "data",
+    assay = NULL,
+    ...
+) {
+  return(GetAssayData(object, layer = layer))
 }
 
 #' Get Fragment object data
@@ -657,18 +764,28 @@ RenameCells.Fragment <- function(object, new.names, ...) {
 
 #' @importFrom SeuratObject SetAssayData
 #' @importFrom GenomeInfoDb genome Seqinfo
+#' @importFrom lifecycle deprecated is_present
 #' @method SetAssayData ChromatinAssay
 #' @concept assay
 #' @export
-SetAssayData.ChromatinAssay <- function(object, slot, new.data, ...) {
-  if (!(slot %in% slotNames(x = object))) {
+SetAssayData.ChromatinAssay <- function(
+    object,
+    layer,
+    new.data,
+    slot = deprecated(),
+    ...
+) {
+  if (is_present(arg = slot)) {
+    layer <- slot
+  }
+  if (!(layer %in% slotNames(x = object))) {
     stop(
-      "slot must be one of ",
+      "layer must be one of ",
       paste(slotNames(x = object), collapse = ", "),
       call. = FALSE
     )
   }
-  if (slot %in% c("counts", "data", "scale.data")) {
+  if (layer %in% c("counts", "data", "scale.data")) {
     if (!(is(object = new.data, class2 = "AnyMatrix"))) {
       stop("Data must be a matrix or sparseMatrix")
     }
@@ -676,7 +793,7 @@ SetAssayData.ChromatinAssay <- function(object, slot, new.data, ...) {
       stop("Number of columns in the provided matrix does not match
            the number of cells in the object")
     }
-    if (slot %in% c("counts", "data")) {
+    if (layer %in% c("counts", "data")) {
       if (nrow(x = object) != nrow(x = new.data)) {
         stop("Number of rows in provided matrix does not match
            the number of rows in the object")
@@ -688,19 +805,19 @@ SetAssayData.ChromatinAssay <- function(object, slot, new.data, ...) {
              the number of rows in the object")
       }
     }
-    slot(object = object, name = slot) <- new.data
-  } else if (slot == "seqinfo") {
+    slot(object = object, name = layer) <- new.data
+  } else if (layer == "seqinfo") {
     if (inherits(x = new.data, what = "Seqinfo")) {
-      slot(object = object, name = slot) <- new.data
+      slot(object = object, name = layer) <- new.data
     } else if (is(object = new.data, class2 = "character")) {
-      slot(object = object, name = slot) <- Seqinfo(genome = new.data)
+      slot(object = object, name = layer) <- Seqinfo(genome = new.data)
     } else if(is.null(x = new.data)) {
-      slot(object = object, name = slot) <- NULL
+      slot(object = object, name = layer) <- NULL
     } else {
       stop("Unknown object supplied. Choose a Seqinfo object or the name
            of a UCSC genome")
     }
-  } else if (slot == "fragments") {
+  } else if (layer == "fragments") {
     if (inherits(x = new.data, what = "list")) {
       # check that it's a list containing fragment class objects
       for (i in seq_along(new.data)) {
@@ -712,7 +829,7 @@ SetAssayData.ChromatinAssay <- function(object, slot, new.data, ...) {
       # single fragment object
       new.data <- list(new.data)
     }
-    frag.list <- GetAssayData(object = object, slot = "fragments")
+    frag.list <- GetAssayData(object = object, layer = "fragments")
     if (length(x = frag.list) != 0) {
       warning("Overwriting existing fragment objects")
     }
@@ -729,23 +846,23 @@ SetAssayData.ChromatinAssay <- function(object, slot, new.data, ...) {
         stop("Annotation genome does not match genome of the object")
         }
     }
-    slot(object = object, name = slot) <- new.data
-  } else if (slot == "bias") {
+    slot(object = object, name = layer) <- new.data
+  } else if (layer == "bias") {
     if (!is(object = new.data, class2 = "vector")) {
       stop("Bias must be provided as a vector")
     }
-    slot(object = object, name = slot) <- new.data
-  } else if (slot == "positionEnrichment") {
+    slot(object = object, name = layer) <- new.data
+  } else if (layer == "positionEnrichment") {
     if (inherits(x = new.data, what = "list")) {
       # list of position enrichment matrices being added
       if (length(x = new.data) == 0) {
         # if list is empty, assign and overwrite slot
-        slot(object = object, name = slot) <- new.data
+        slot(object = object, name = layer) <- new.data
       } else if (is.null(x = names(x = new.data))) {
         stop("If supplying a list of position enrichment matrices,
              each element must be named")
       } else {
-        current.data <- GetAssayData(object = object, slot = slot)
+        current.data <- GetAssayData(object = object, layer = layer)
         if (length(x = current.data) != 0) {
           warning("Overwriting current list of position enrichement matrices")
         }
@@ -756,7 +873,7 @@ SetAssayData.ChromatinAssay <- function(object, slot, new.data, ...) {
               )
           }
         }
-        slot(object = object, name = slot) <- new.data
+        slot(object = object, name = layer) <- new.data
       }
     } else if (!is(object = new.data, class2 = "AnyMatrix")) {
       stop("Position enrichment must be provided as a matrix or sparseMatrix")
@@ -768,19 +885,19 @@ SetAssayData.ChromatinAssay <- function(object, slot, new.data, ...) {
       } else {
         key <- args$key
       }
-      current.pos <- slot(object = object, name = slot)
+      current.pos <- slot(object = object, name = layer)
       current.pos[[key]] <- new.data
-      slot(object = object, name = slot) <- current.pos
+      slot(object = object, name = layer) <- current.pos
     }
-  } else if (slot == "ranges") {
+  } else if (layer == "ranges") {
     if (!is(object = new.data, class2 = "GRanges")) {
       stop("Must provide a GRanges object")
     } else if (length(x = new.data) != nrow(x = object)) {
       stop("Number of ranges provided is not equal to the number
            of features in the assay")
     }
-    slot(object = object, name = slot) <- new.data
-  } else if (slot == "motifs") {
+    slot(object = object, name = layer) <- new.data
+  } else if (layer == "motifs") {
     if (!inherits(x = new.data, what = "Motif")) {
       stop("Must provide a Motif class object")
     }
@@ -799,10 +916,20 @@ SetAssayData.ChromatinAssay <- function(object, slot, new.data, ...) {
         new.data <- new.data[keep.features, ]
       }
     }
-    slot(object = object, name = slot) <- new.data
-  } else if (slot == "links") {
-    slot(object = object, name = slot) <- new.data
+    slot(object = object, name = layer) <- new.data
+  } else if (layer == "links") {
+    slot(object = object, name = layer) <- new.data
   }
+  return(object)
+}
+
+#' @importFrom SeuratObject LayerData<- SetAssayData
+#' @method LayerData<- ChromatinAssay
+#' @concept assay
+#' @export
+"LayerData<-.ChromatinAssay" <- function(object, layer, ..., value) {
+  object <- SetAssayData(object = object, slot = layer, new.data = value)
+  # validObject(object = object)
   return(object)
 }
 
@@ -1031,7 +1158,7 @@ subset.Fragment <- function(
 #' @concept assay
 #' @method merge ChromatinAssay
 #' @importFrom GenomicRanges union findOverlaps
-#' @importFrom SeuratObject RowMergeSparseMatrices
+#' @importFrom SeuratObject RowMergeSparseMatrices Key Key<-
 #' @importFrom S4Vectors subjectHits queryHits mcols
 #' @importMethodsFrom GenomeInfoDb merge
 merge.ChromatinAssay <- function(
@@ -1353,6 +1480,10 @@ merge.ChromatinAssay <- function(
         validate.fragments = FALSE
       )
     }
+  }
+  keys <- unlist(x = sapply(X = assays, FUN = Key))
+  if (length(x = unique(x = keys)) == 1) {
+    Key(object = new.assay) <- keys[1]
   }
   return(new.assay)
 }

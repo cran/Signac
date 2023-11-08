@@ -1,7 +1,7 @@
 Package: Signac
 Title: Analysis of Single-Cell Chromatin Data
-Version: 1.11.0
-Date: 2023-10-13
+Version: 1.12.0
+Date: 2023-11-06
 Authors@R: c(
   person(given = 'Tim', family = 'Stuart', email = 'stuartt@gis.a-star.edu.sg', role = c('aut', 'cre'), comment = c(ORCID = '0000-0002-3044-0897')),
   person(given = 'Avi', family = 'Srivastava', email = 'asrivastava@nygenome.org', role = 'aut', comment = c(ORCID = '0000-0001-9798-2079')),
@@ -25,7 +25,8 @@ Imports: GenomeInfoDb (>= 1.29.3), GenomicRanges, IRanges, Matrix,
         Rsamtools, S4Vectors, SeuratObject (>= 4.0.0), data.table,
         dplyr (>= 1.0.0), future, future.apply, ggplot2, rlang, irlba,
         pbapply, tidyr, patchwork, stats, utils, BiocGenerics, stringi,
-        fastmatch, RcppRoll, scales, Rcpp, grid, tidyselect, vctrs
+        fastmatch, RcppRoll, scales, Rcpp, grid, tidyselect, vctrs,
+        lifecycle
 Collate: 'RcppExports.R' 'data.R' 'differential_accessibility.R'
         'generics.R' 'dimension_reduction.R' 'footprinting.R'
         'fragments.R' 'genomeinfodb-methods.R' 'granges-methods.R'
@@ -37,11 +38,11 @@ Suggests: Seurat (>= 4.0.6), ggforce, ggrepel, ggseqlogo, testthat (>=
         BSgenome, shiny, miniUI, rtracklayer, biovizBase, Biostrings,
         lsa, qlcMatrix, MASS
 NeedsCompilation: yes
-Packaged: 2023-10-13 02:16:45 UTC; stuartt
+Packaged: 2023-11-08 09:02:18 UTC; stuartt
 Author: Tim Stuart [aut, cre] (<https://orcid.org/0000-0002-3044-0897>),
   Avi Srivastava [aut] (<https://orcid.org/0000-0001-9798-2079>),
   Paul Hoffman [ctb] (<https://orcid.org/0000-0002-7693-8957>),
   Rahul Satija [ctb] (<https://orcid.org/0000-0001-9448-8833>)
 Maintainer: Tim Stuart <stuartt@gis.a-star.edu.sg>
 Repository: CRAN
-Date/Publication: 2023-10-13 04:20:03 UTC
+Date/Publication: 2023-11-08 09:30:02 UTC

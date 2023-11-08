@@ -1082,6 +1082,12 @@ SingleCoveragePlot <- function(
       stop("Requested assay is not a ChromatinAssay.")
     }
   })
+  if(length(colnames(object)) > length(colnames(object[[assay[[1]]]]))) {
+    object <- UpdateChromatinObject(object = object,
+                                    chromatin.assay = assay, 
+                                    expression.assay = expression.assay,
+                                    features = features)
+  }
   if (!is.null(x = group.by)) {
     Idents(object = object) <- group.by
   }
@@ -1751,7 +1757,7 @@ CoveragePlot <- function(
 #' @return Returns a \code{\link[ggplot2]{ggplot}} object
 #' @examples
 #' \donttest{
-#' motif.obj <- SeuratObject::GetAssayData(atac_small, slot = "motifs")
+#' motif.obj <- Motifs(atac_small)
 #' MotifPlot(atac_small, motifs = head(colnames(motif.obj)))
 #' }
 MotifPlot <- function(
@@ -2507,6 +2513,7 @@ ExpressionPlot <- function(
     group.by = group.by,
     idents = NULL
   )
+  obj.groups <- obj.groups[colnames(object[[assay]])] 
   # if levels set, define colors based on all groups
   levels.use <- levels(x = obj.groups)
   if (!is.null(x = levels.use)) {
@@ -2538,6 +2545,21 @@ ExpressionPlot <- function(
         gene = i,
         expression = data.plot[i, ],
         group = obj.groups
+      )
+      df <- rbind(df, df.1)
+    }
+  }
+  missing.levels <- setdiff(x = levels(x = df$group), y = unique(x = df$group))
+  if (!is.null(x = idents)) {
+    missing.levels <- intersect(x = missing.levels, y = idents)
+  }
+  if (length(x = missing.levels) > 0) {
+    # fill missing idents with zero
+    for (i in features) {
+      df.1 <- data.frame(
+        gene = i,
+        expression = 0,
+        group = missing.levels
       )
       df <- rbind(df, df.1)
     }
