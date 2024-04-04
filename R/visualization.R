@@ -425,6 +425,11 @@ PlotFootprint <- function(
     combined.var <- paste0(object[[split.by]][, 1], splitby_str, grouping.var)
     object$grouping_tmp <- combined.var
     group.by <- "grouping_tmp"
+    if (!is.null(x = idents)) {
+      # adjust idents parameter with new split.by information
+      idents.keep <- combined.var[grouping.var %in% idents]
+      idents <- unique(x = idents.keep)
+    }
   }
   # TODO add option to show variance among cells
   plot.data <- GetFootprintData(
@@ -1110,11 +1115,17 @@ SingleCoveragePlot <- function(
     object$grouping_tmp <- combined.var
     Idents(object = object) <- "grouping_tmp"
     group.by <- "grouping_tmp"
+    if (!is.null(x = idents)) {
+      # adjust idents parameter with new split.by information
+      idents.keep <- combined.var[grouping.var %in% idents]
+      idents <- unique(x = idents.keep)
+    }
   }
   cells.per.group <- CellsPerGroup(
     object = object,
     group.by = group.by
   )
+  
   obj.groups <- GetGroups(
     object = object,
     group.by = group.by,
@@ -1221,6 +1232,13 @@ SingleCoveragePlot <- function(
       region = region,
       mode = annotation
     )
+  }
+  if (is.character(x = links)) {
+    # subset to genes in the desired list
+    links.use <- Links(object = object)
+    links.use <- links.use[links.use$gene %in% links]
+    Links(object = object) <- links.use
+    links <- TRUE
   }
   if (links) {
     link.plot <- LinkPlot(object = object[[assay[[1]]]], region = region)
@@ -1569,7 +1587,11 @@ CoverageTrack <- function(
 #' highlighted in grey. To change the color of the highlighting, include a
 #' metadata column in the GRanges object named "color" containing the color to
 #' use for each region.
-#' @param links Display links
+#' @param links Display links. This can be a TRUE/FALSE value which will 
+#' determine whether a links track is displayed, and if TRUE links for all genes
+#' in the plotted region will be shown. Alternatively, a character vector can be
+#' provided, giving a list of gene names to plot links for. If this is provided,
+#' only links for those genes will be displayed in the plot.
 #' @param tile Display per-cell fragment information in sliding windows. If
 #' plotting multi-assay data, only the first assay is shown in the tile plot.
 #' @param tile.size Size of the sliding window for per-cell fragment tile plot

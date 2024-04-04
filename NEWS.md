@@ -1,4 +1,21 @@
-# 1.12.0
+# Signac 1.13.0
+
+Bug fixes:
+
+* Fix bug in `SetAssayData()` for `ChromatinAssay` objects ([#1538](https://github.com/stuart-lab/signac/issues/1538))
+* Fix bug in `TSSEnrichment()` causing error on small example dataset ([#1563](https://github.com/stuart-lab/signac/issues/1563))
+* Fix errors when using a CSI index ([#1494](https://github.com/stuart-lab/signac/issues/1494))
+* Fix error in `Footprint()` when running on a small number of regions ([#1614](https://github.com/stuart-lab/signac/issues/1614))
+* Fix error in `CoveragePlot()` and `PlotFootprint()` when setting both `ident` and `split.by` parameters ([#1660](https://github.com/stuart-lab/signac/issues/1660))
+* Fix bug in `MatchRegionStats()` when NA values are present in only some of the feature metadata rows ([#1655](https://github.com/stuart-lab/signac/issues/1655))
+
+Other changes:
+
+* Add ability to plot links for certain genes only in `CoveragePlot()` ([#1459](https://github.com/stuart-lab/signac/issues/1459))
+* Add `corSparse()`, remove qlcMatrix from suggested packages ([#1570](https://github.com/stuart-lab/signac/issues/1570)) 
+* Update documentation for `GetLinkedPeaks()` and `GetLinkedGenes()` ([#1654](https://github.com/stuart-lab/signac/issues/1654))
+
+# Signac 1.12.0
 
 Bug fixes:
 
