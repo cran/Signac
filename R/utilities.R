@@ -829,7 +829,13 @@ GetCellsInRegion <- function(tabix, region, cells = NULL) {
     region <- StringToGRanges(regions = region)
   }
   reads <- scanTabix(file = tabix, param = region)
-  reads <- lapply(X = reads, FUN = ExtractCell)
+  s <- reads[[which(x = lengths(x = reads) > 0)[1]]]
+  if (length(x = s) > 0) {
+    ncol_frags <- lengths(x = gregexpr(pattern = "\t", text = s[1]))[[1]] + 1
+  } else {
+    ncol_frags <- 5
+  }
+  reads <- lapply(X = reads, FUN = ExtractCell, ncol = ncol_frags)
   if (!is.null(x = cells)) {
     reads <- sapply(X = reads, FUN = function(x) {
       x <- x[fmatch(x = x, table = cells, nomatch = 0L) > 0L]
@@ -1082,13 +1088,6 @@ MatchRegionStats <- function(
   if (length(x = features.match) == 0) {
     stop("Must supply at least one sequence characteristic to match")
   }
-  # remove features that have NA for any of the features to match
-  meta.feature <- na.omit(object = meta.feature[, features.match, drop = FALSE])
-  if (nrow(x = meta.feature) < n) {
-    n <- nrow(x = meta.feature)
-    warning("Requested more features than present in supplied data.
-            Returning ", n, " features")
-  }
   for (i in seq_along(along.with = features.match)) {
     featmatch <- features.match[[i]]
     if (!(featmatch %in% colnames(x = query.feature))) {
@@ -1098,6 +1097,13 @@ MatchRegionStats <- function(
       } else {
         stop(featmatch, " not present in meta.features")
       }
+    }
+    # remove features that have NA for any of the features to match
+    meta.feature <- na.omit(object = meta.feature[, features.match, drop = FALSE])
+    if (nrow(x = meta.feature) < n) {
+      n <- nrow(x = meta.feature)
+      warning("Requested more features than present in supplied data.
+            Returning ", n, " features")
     }
     if (verbose) {
       message("Matching ", featmatch, " distribution")
@@ -1220,20 +1226,22 @@ NonOverlapping <- function(x, all.features) {
 }
 
 #' @importFrom Matrix sparseMatrix
-AddMissing <- function(x, cells, features = NULL) {
+AddMissing <- function(x, cells = NULL, features = NULL) {
   # add columns with zeros for cells or features not in matrix
-  missing.cells <- setdiff(x = cells, y = colnames(x = x))
-  if (!(length(x = missing.cells) == 0)) {
-    null.mat <- sparseMatrix(
-      i = c(),
-      j = c(),
-      dims = c(nrow(x = x), length(x = missing.cells))
-    )
-    rownames(x = null.mat) <- rownames(x = x)
-    colnames(x = null.mat) <- missing.cells
-    x <- cbind(x, null.mat)
+  if (!is.null(cells)) {
+    missing.cells <- setdiff(x = cells, y = colnames(x = x))
+    if (!(length(x = missing.cells) == 0)) {
+      null.mat <- sparseMatrix(
+        i = c(),
+        j = c(),
+        dims = c(nrow(x = x), length(x = missing.cells))
+      )
+      rownames(x = null.mat) <- rownames(x = x)
+      colnames(x = null.mat) <- missing.cells
+      x <- cbind(x, null.mat)
+    }
+    x <- x[, cells, drop = FALSE]
   }
-  x <- x[, cells, drop = FALSE]
   if (!is.null(x = features)) {
     missing.features <- setdiff(x = features, y = rownames(x = x))
     if (!(length(x = missing.features) == 0)) {
@@ -1382,16 +1390,17 @@ ChunkGRanges <- function(granges, nchunk) {
 # vectors (output of \code{\link{scanTabix}})
 #
 # @param x List of character vectors
+# @param ncol Number of columns in the fragment file
 # @return Returns a string
 #' @importFrom stringi stri_split_fixed
-ExtractCell <- function(x) {
+ExtractCell <- function(x, ncol=5) {
   if (length(x = x) == 0) {
     return(NULL)
   } else {
     x <- stri_split_fixed(str = x, pattern = "\t")
     n <- length(x = x)
     x <- unlist(x = x)
-    return(unlist(x = x)[5 * (1:n) - 1])
+    return(unlist(x = x)[ncol * (1:n) - (ncol-4)])
   }
 }
 
