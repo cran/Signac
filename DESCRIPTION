@@ -1,7 +1,7 @@
 Package: Signac
 Title: Analysis of Single-Cell Chromatin Data
-Version: 1.15.0
-Date: 2025-08-17
+Version: 1.16.0
+Date: 2025-10-10
 Authors@R: c(
   person(given = 'Tim', family = 'Stuart', email = 'stuartt@a-star.edu.sg', role = c('aut', 'cre'), comment = c(ORCID = '0000-0002-3044-0897')),
   person(given = 'Avi', family = 'Srivastava', email = 'asrivastava@wistar.org', role = 'aut', comment = c(ORCID = '0000-0001-9798-2079')),
@@ -17,7 +17,7 @@ Depends: R (>= 4.1.0), methods
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 URL: https://github.com/stuart-lab/signac, https://stuartlab.org/signac
 BugReports: https://github.com/stuart-lab/signac/issues
 LinkingTo: Rcpp
@@ -36,13 +36,13 @@ Collate: 'RcppExports.R' 'data.R' 'differential_accessibility.R'
 Suggests: Seurat (>= 5.0.2), ggforce, ggrepel, ggseqlogo, testthat (>=
         2.1.0), chromVAR, SummarizedExperiment, TFBSTools, motifmatchr,
         BSgenome, shiny, miniUI, rtracklayer, biovizBase, Biostrings,
-        lsa, MASS
+        lsa, MASS, wrswoR
 NeedsCompilation: yes
-Packaged: 2025-08-18 14:58:02 UTC; tim
+Packaged: 2025-10-10 08:34:46 UTC; stuartt
 Author: Tim Stuart [aut, cre] (ORCID: <https://orcid.org/0000-0002-3044-0897>),
   Avi Srivastava [aut] (ORCID: <https://orcid.org/0000-0001-9798-2079>),
   Paul Hoffman [ctb] (ORCID: <https://orcid.org/0000-0002-7693-8957>),
   Rahul Satija [ctb] (ORCID: <https://orcid.org/0000-0001-9448-8833>)
 Maintainer: Tim Stuart <stuartt@a-star.edu.sg>
 Repository: CRAN
-Date/Publication: 2025-08-18 19:00:25 UTC
+Date/Publication: 2025-10-10 09:10:07 UTC
