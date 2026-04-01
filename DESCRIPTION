@@ -1,7 +1,7 @@
 Package: Signac
 Title: Analysis of Single-Cell Chromatin Data
-Version: 1.16.0
-Date: 2025-10-10
+Version: 1.17.0
+Date: 2026-03-31
 Authors@R: c(
   person(given = 'Tim', family = 'Stuart', email = 'stuartt@a-star.edu.sg', role = c('aut', 'cre'), comment = c(ORCID = '0000-0002-3044-0897')),
   person(given = 'Avi', family = 'Srivastava', email = 'asrivastava@wistar.org', role = 'aut', comment = c(ORCID = '0000-0001-9798-2079')),
@@ -23,26 +23,27 @@ BugReports: https://github.com/stuart-lab/signac/issues
 LinkingTo: Rcpp
 Imports: GenomeInfoDb (>= 1.29.3), GenomicRanges, IRanges, Matrix,
         Rsamtools, S4Vectors, SeuratObject (>= 5.0.2), data.table,
-        dplyr (>= 1.0.0), future, future.apply, ggplot2, rlang, irlba,
+        dplyr (>= 1.0.0), future, future.apply, ggplot2, rlang,
         pbapply, tidyr, patchwork, stats, utils, BiocGenerics, stringi,
         fastmatch, RcppRoll, scales, Rcpp, grid, tidyselect, vctrs,
-        lifecycle
-Collate: 'RcppExports.R' 'data.R' 'differential_accessibility.R'
-        'generics.R' 'dimension_reduction.R' 'footprinting.R'
-        'fragments.R' 'genomeinfodb-methods.R' 'granges-methods.R'
-        'heatmaps.R' 'iranges-methods.R' 'links.R' 'mito.R' 'motifs.R'
-        'objects.R' 'peaks.R' 'preprocessing.R' 'quantification.R'
+        lifecycle, sparseMatrixStats, RSpectra, Seqinfo
+Collate: 'RcppExports.R' 'Signac-package.R' 'data.R'
+        'differential_accessibility.R' 'generics.R'
+        'dimension_reduction.R' 'footprinting.R' 'fragments.R'
+        'genomeinfodb-methods.R' 'granges-methods.R' 'heatmaps.R'
+        'iranges-methods.R' 'links.R' 'mito.R' 'motifs.R' 'objects.R'
+        'ontology.R' 'peaks.R' 'preprocessing.R' 'quantification.R'
         'region-enrichment.R' 'utilities.R' 'visualization.R' 'zzz.R'
 Suggests: Seurat (>= 5.0.2), ggforce, ggrepel, ggseqlogo, testthat (>=
-        2.1.0), chromVAR, SummarizedExperiment, TFBSTools, motifmatchr,
-        BSgenome, shiny, miniUI, rtracklayer, biovizBase, Biostrings,
-        lsa, MASS, wrswoR
+        2.1.0), SummarizedExperiment, TFBSTools, motifmatchr, BSgenome,
+        shiny, miniUI, rtracklayer, biovizBase, Biostrings, lsa, MASS,
+        wrswoR, fgsea
 NeedsCompilation: yes
-Packaged: 2025-10-10 08:34:46 UTC; stuartt
+Packaged: 2026-04-01 09:30:29 UTC; stuartt
 Author: Tim Stuart [aut, cre] (ORCID: <https://orcid.org/0000-0002-3044-0897>),
   Avi Srivastava [aut] (ORCID: <https://orcid.org/0000-0001-9798-2079>),
   Paul Hoffman [ctb] (ORCID: <https://orcid.org/0000-0002-7693-8957>),
   Rahul Satija [ctb] (ORCID: <https://orcid.org/0000-0001-9448-8833>)
 Maintainer: Tim Stuart <stuartt@a-star.edu.sg>
 Repository: CRAN
-Date/Publication: 2025-10-10 09:10:07 UTC
+Date/Publication: 2026-04-01 10:00:03 UTC

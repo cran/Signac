@@ -1,3 +1,36 @@
+# Signac 1.17.0
+
+New features:
+
+* Added the `ATACqc()` function to run `fragtk qc` and store the results
+* Added `FitMeanVar()` and `PearsonResidualVar()` functions for highly variable feature selection
+* Added `pca` parameter to `RunSVD()` to compute PCA dimension reduction without storing standardized matrix
+* Added the `EnrichedTerms()` function to run `fgsea()` on differential testing results from each group of cell identities
+* Added `layer` parameter to `RunSVD()` to select which layer to use
+
+Bug fixes:
+
+* Added `seqinfo` to motif positions in `AddMotifs()` to prevent the extension
+of motif regions beyond the ends of chromosomes
+([#1983](https://github.com/stuart-lab/signac/pull/1983); [@chenyenchung](https://github.com/chenyenchung))
+
+Other changes:
+
+* Deprecated `NucleosomeSignal` and `TSSEnrichment` functions in favor of the
+new `ATACqc` function
+* Deprecated `TSSPlot`
+* Deprecated `GRangesToString` and `StringToGRanges`
+* Deprecated the blacklist region data objects in favor of using the
+[excluderanges](https://github.com/dozmorovlab/excluderanges) package
+* Changed SVD function in `RunSVD()` from `irlba::irlba()` to `RSpectra::svds()`
+* Removed `irlba.work` parameter from `RunSVD()`
+* Added `sparseMatrixStats` and `RSpectra` to package dependencies; removed `irlba`
+* Added `fgsea` to suggested packages
+* Added `Seqinfo` to dependencies
+* Removed `RunChromVAR()` and `AddChromatinModule()` due to the chromVAR package
+being unavailable in Bioconductor 3.23
+* Removed `chromVAR` from suggested packages
+
 # Signac 1.16.0
 
 Bug fixes:
@@ -23,7 +56,7 @@ New features:
 Bug fixes:
 
 * Fix object subsetting when `RegionMatrix()` position enrichment information is present in the object.
-* Fix error in `RegionPlot()` x-axis ([@cmf1997](https://github.com/cmf1997); [#1899](https://github.com/stuart-lab/signac/pull/1899))
+* Fix error in `RegionPlot()` x-axis ([@Cmfffff](https://github.com/Cmfffff); [#1899](https://github.com/stuart-lab/signac/pull/1899))
 
 Other changes:
 

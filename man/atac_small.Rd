@@ -7,13 +7,13 @@
 \format{
 A Seurat object with the following assays
 \describe{
-  \item{peaks}{A peak x cell dataset}
-  \item{bins}{A 5 kb genome bin x cell dataset}
-  \item{RNA}{A gene x cell dataset}
+\item{peaks}{A peak x cell dataset}
+\item{bins}{A 5 kb genome bin x cell dataset}
+\item{RNA}{A gene x cell dataset}
 }
 }
 \source{
-\url{https://support.10xgenomics.com/single-cell-atac/datasets/1.1.0/atac_v1_pbmc_10k}
+\url{https://www.10xgenomics.com/datasets/10k-human-pbmcs-atac-v2-chromium-controller-2-standard}
 }
 \usage{
 atac_small
