@@ -1,7 +1,7 @@
-9c7188da44d62515d8a509383ed0fc9b *DESCRIPTION
+0f83c0af6f2671f4046676d548e2abbc *DESCRIPTION
 d2b104ec26bc8a04a5f194060a707668 *LICENSE
-fc45ca0a873ffc6cffc3fcd26218bc96 *NAMESPACE
-fe164f4961009ea8d07591a9e4a31d83 *NEWS.md
+9d8a6ebf2c8ed7be798d6f85a0368eca *NAMESPACE
+1577ab5e26ccc47cc2f92a63a4ac4525 *NEWS.md
 407ce6ea347fb0df9e121c81b418de37 *R/RcppExports.R
 d7a54580ba6b0c63cf4b2782267b6f43 *R/Signac-package.R
 15768d90eabd504ca3d95b2205041ca2 *R/data.R
@@ -16,7 +16,7 @@ fc40b605f499f4ad9768ef7ea75ad5d2 *R/granges-methods.R
 d74f6ebc8750a671e4222dfff185379b *R/iranges-methods.R
 bc28f7694656f12b030426992d973062 *R/links.R
 1ad790fe681b034fbdd2adf60180b03f *R/mito.R
-0a33dff4e6b013635ba3b38d7a94b7d1 *R/motifs.R
+07d949a4ff8235aded508d139aa4c1f7 *R/motifs.R
 9ddb3cb0c451b4cc54a0c19a345b06a0 *R/objects.R
 950294aaef15e440da05bc4895ba6fcd *R/ontology.R
 59f42e23af6071fcf9e0b4a8611b8292 *R/peaks.R
@@ -191,8 +191,8 @@ b94110aaf38d484b6b931cade0d6732d *tests/testdata/featurematrix.rds
 2708ba958c1510e975704ec3af9e7d0a *tests/testthat.R
 de73e6d1f82d62dac7bfbd2cca24ae26 *tests/testthat/test-dimreduc.R
 4be29f3b15eb750a5423581058e58f15 *tests/testthat/test-mito.R
-542dfa636554668e919c0d12cb06a372 *tests/testthat/test-motifs.R
-55300ad1e0f877a3f987769be7cc9d3e *tests/testthat/test-preprocessing.R
+84f3797abe3e4ef2381d51a9b6883911 *tests/testthat/test-motifs.R
+e3eb3af5d3ac8c0c19e86dc143a41bd8 *tests/testthat/test-preprocessing.R
 268e37ad2d73e7fada1a1e45af48aa2d *tests/testthat/test-quantification.R
 7cc5113129eb854515d9a71f7550984f *tests/testthat/test-utilities.R
 e8001086b5b2d32fe58d385d4a6150eb *tests/testthat/test_fragments.R
